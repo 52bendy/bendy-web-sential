@@ -14,13 +14,13 @@ pub fn router(db: DbPool) -> Router {
     Router::new()
         .route("/api/v1/domains", get(list_domains))
         .route("/api/v1/domains", post(create_domain))
-        .route("/api/v1/domains/:id", get(get_domain))
-        .route("/api/v1/domains/:id", put(update_domain))
-        .route("/api/v1/domains/:id", delete(delete_domain))
+        .route("/api/v1/domains/{id}", get(get_domain))
+        .route("/api/v1/domains/{id}", put(update_domain))
+        .route("/api/v1/domains/{id}", delete(delete_domain))
         .route("/api/v1/routes", get(list_routes))
         .route("/api/v1/routes", post(create_route))
-        .route("/api/v1/routes/:id", put(update_route))
-        .route("/api/v1/routes/:id", delete(delete_route))
+        .route("/api/v1/routes/{id}", put(update_route))
+        .route("/api/v1/routes/{id}", delete(delete_route))
         .with_state(state)
 }
 

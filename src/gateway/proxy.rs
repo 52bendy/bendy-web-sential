@@ -19,7 +19,7 @@ pub struct AppState {
 
 pub async fn start_gateway(state: Arc<AppState>) {
     let app = Router::new()
-        .route("/*path", any(proxy_handler))
+        .route("/{*path}", any(proxy_handler))
         .route("/", any(proxy_handler))
         .with_state(state.clone())
         .layer(TraceLayer::new_for_http());
