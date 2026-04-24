@@ -8,6 +8,7 @@ import Domains from '@/pages/Domains';
 import RoutesPage from '@/pages/Routes';
 import AuditLog from '@/pages/AuditLog';
 import Settings from '@/pages/Settings';
+import RouteTest from '@/pages/RouteTest';
 import { useAuthStore } from '@/store';
 import '@/i18n';
 
@@ -46,6 +47,7 @@ export default function App() {
             <Route path="domains" element={<Domains />} />
             <Route path="routes" element={<RoutesPage />} />
             <Route path="audit-log" element={<AuditLog />} />
+            <Route path="routes/test/:id" element={<RouteTest />} />
             <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>

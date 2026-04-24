@@ -23,10 +23,10 @@ COPY --from=builder /app/.env.example /app/.env 2>/dev/null || true
 
 ENV RUST_LOG=info
 ENV BWS_DATABASE_URL=sqlite:///data/bws.db
-ENV BWS_PORT=8080
-ENV BWS_ADMIN_PORT=8081
+ENV BWS_GATEWAY_PORT=8080
+ENV BWS_ADMIN_PORT=3000
 
-EXPOSE 8080 8081
+EXPOSE 8080 3000
 
 VOLUME ["/data"]
 

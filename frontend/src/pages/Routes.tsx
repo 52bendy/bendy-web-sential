@@ -2,13 +2,15 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, FlaskConical } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import type { Route, Domain } from '@/types';
 
 export default function Routes() {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [modalOpen, setModalOpen] = useState(false);
   const [editRoute, setEditRoute] = useState<Route | null>(null);
   const [form, setForm] = useState({
@@ -146,7 +148,10 @@ export default function Routes() {
                   <td className="px-4 py-3 text-[var(--text-secondary)]">{r.priority}</td>
                   <td className="px-4 py-3 text-[var(--text-secondary)]">{domains?.data?.find(d => d.id === r.domain_id)?.domain ?? '-'}</td>
                   <td className="px-4 py-3 text-right">
-                    <button onClick={() => openEdit(r)} className="p-1.5 rounded hover:bg-[var(--bg-tertiary)]"><Pencil size={14} /></button>
+                    <button onClick={() => navigate(`/routes/test/${r.id}`)} className="p-1.5 rounded hover:bg-[var(--bg-tertiary)] text-blue-500" title={t('routeTest.test')}>
+                      <FlaskConical size={14} />
+                    </button>
+                    <button onClick={() => openEdit(r)} className="p-1.5 rounded hover:bg-[var(--bg-tertiary)] ml-1"><Pencil size={14} /></button>
                     <button onClick={() => deleteMut.mutate(r.id)} className="p-1.5 rounded hover:bg-[var(--bg-tertiary)] text-red-500 ml-1"><Trash2 size={14} /></button>
                   </td>
                 </tr>

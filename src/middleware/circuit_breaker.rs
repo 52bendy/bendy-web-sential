@@ -1,8 +1,9 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::RwLock as StdRwLock;
 use std::time::{Duration, Instant};
 
-use tokio::sync::RwLock;
+use tokio::sync::RwLock as TokioRwLock;
 
 use crate::config::CircuitBreakerConfig;
 
@@ -14,40 +15,46 @@ pub enum CircuitState {
 }
 
 pub struct CircuitBreaker {
-    state: Arc<RwLock<CircuitState>>,
+    // Sync RwLock for metrics() — called from sync context
+    state: Arc<StdRwLock<CircuitState>>,
+    last_failure_time: Arc<StdRwLock<Option<Instant>>>,
+    // Async RwLock for state transitions — called from async context
+    async_state: Arc<TokioRwLock<CircuitState>>,
+    async_last_failure_time: Arc<TokioRwLock<Option<Instant>>>,
     failure_count: Arc<AtomicU32>,
     success_count: Arc<AtomicU32>,
     total_requests: Arc<AtomicU32>,
-    last_failure_time: Arc<RwLock<Option<Instant>>>,
     config: CircuitBreakerConfig,
 }
 
 impl CircuitBreaker {
     pub fn new(config: CircuitBreakerConfig) -> Self {
         Self {
-            state: Arc::new(RwLock::new(CircuitState::Closed)),
+            state: Arc::new(StdRwLock::new(CircuitState::Closed)),
+            last_failure_time: Arc::new(StdRwLock::new(None)),
+            async_state: Arc::new(TokioRwLock::new(CircuitState::Closed)),
+            async_last_failure_time: Arc::new(TokioRwLock::new(None)),
             failure_count: Arc::new(AtomicU32::new(0)),
             success_count: Arc::new(AtomicU32::new(0)),
             total_requests: Arc::new(AtomicU32::new(0)),
-            last_failure_time: Arc::new(RwLock::new(None)),
             config,
         }
     }
 
     pub async fn state(&self) -> CircuitState {
-        *self.state.read().await
+        *self.async_state.read().await
     }
 
     pub async fn record_success(&self) {
         self.success_count.fetch_add(1, Ordering::Relaxed);
         self.total_requests.fetch_add(1, Ordering::Relaxed);
 
-        match *self.state.read().await {
+        match *self.async_state.read().await {
             CircuitState::HalfOpen => {
                 let successes = self.success_count.load(Ordering::Relaxed);
                 if successes >= self.config.success_threshold {
                     tracing::info!("circuit breaker closed");
-                    *self.state.write().await = CircuitState::Closed;
+                    *self.async_state.write().await = CircuitState::Closed;
                     self.failure_count.store(0, Ordering::Relaxed);
                     self.success_count.store(0, Ordering::Relaxed);
                 }
@@ -62,12 +69,12 @@ impl CircuitBreaker {
     pub async fn record_failure(&self) {
         self.failure_count.fetch_add(1, Ordering::Relaxed);
         self.total_requests.fetch_add(1, Ordering::Relaxed);
-        *self.last_failure_time.write().await = Some(Instant::now());
+        *self.async_last_failure_time.write().await = Some(Instant::now());
 
-        let state = *self.state.read().await;
+        let state = *self.async_state.read().await;
         if state == CircuitState::HalfOpen {
             tracing::warn!("circuit breaker reopened after failure in half-open state");
-            *self.state.write().await = CircuitState::Open;
+            *self.async_state.write().await = CircuitState::Open;
             self.success_count.store(0, Ordering::Relaxed);
             return;
         }
@@ -79,7 +86,7 @@ impl CircuitBreaker {
                 let failure_rate = failures as f64 / total.max(1) as f64;
                 if failure_rate >= 0.5 {
                     tracing::warn!(failures, total, "circuit breaker opened");
-                    *self.state.write().await = CircuitState::Open;
+                    *self.async_state.write().await = CircuitState::Open;
                 }
             }
         }
@@ -90,15 +97,15 @@ impl CircuitBreaker {
             return true;
         }
 
-        let mut state_guard = self.state.write().await;
+        let mut state_guard = self.async_state.write().await;
         match *state_guard {
             CircuitState::Open => {
-                let last_failure = *self.last_failure_time.read().await;
+                let last_failure = *self.async_last_failure_time.read().await;
                 drop(state_guard);
                 if let Some(last) = last_failure {
                     if last.elapsed() >= Duration::from_secs(self.config.open_timeout_secs) {
                         tracing::info!("circuit breaker entering half-open state");
-                        *self.state.write().await = CircuitState::HalfOpen;
+                        *self.async_state.write().await = CircuitState::HalfOpen;
                         self.failure_count.store(0, Ordering::Relaxed);
                         self.success_count.store(0, Ordering::Relaxed);
                         self.total_requests.store(0, Ordering::Relaxed);
@@ -115,9 +122,9 @@ impl CircuitBreaker {
         }
     }
 
-    pub fn metrics(&self) -> CircuitBreakerMetrics {
+    pub async fn metrics(&self) -> CircuitBreakerMetrics {
         CircuitBreakerMetrics {
-            state: *self.state.blocking_read(),
+            state: *self.async_state.read().await,
             failure_count: self.failure_count.load(Ordering::Relaxed),
             success_count: self.success_count.load(Ordering::Relaxed),
         }

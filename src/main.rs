@@ -92,10 +92,12 @@ fn build_admin_server(
     use axum::routing::get;
 
     let auth = api::auth::router(db.clone(), config, blacklist);
-    let gateway_api = api::domains::router(db.clone());
+    let gateway_api = api::domains::router(db.clone(), config);
     let audit_api = api::audit::router(db.clone());
-    let metrics_api = api::metrics::router(db.clone(), cb);
+    let metrics_api = api::metrics::router(db.clone(), cb.clone());
     let prom = prometheus_router(prometheus_metrics);
+    let traffic_api = api::traffic::router(db.clone());
+    let k8s_api = api::k8s::router(db.clone(), cb.clone());
     let health = Router::new().route("/health", get(|| async { "ok" }));
 
     axum::Router::new()
@@ -105,6 +107,8 @@ fn build_admin_server(
         .merge(audit_api)
         .merge(metrics_api)
         .merge(prom)
+        .merge(traffic_api)
+        .merge(k8s_api)
         .layer(TraceLayer::new_for_http())
 }
 

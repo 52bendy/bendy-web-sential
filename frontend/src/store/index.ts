@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { MenuPosition } from '@/types';
 
 interface AuthState {
   token: string | null;
@@ -32,6 +33,29 @@ export const useThemeStore = create<ThemeState>((set) => ({
       localStorage.setItem('bws_theme', next ? 'dark' : 'light');
       document.documentElement.classList.toggle('dark', next);
       return { dark: next };
+    });
+  },
+}));
+
+interface LayoutState {
+  menuPosition: MenuPosition;
+  setMenuPosition: (position: MenuPosition) => void;
+  sidebarCollapsed: boolean;
+  toggleSidebar: () => void;
+}
+
+export const useLayoutStore = create<LayoutState>((set) => ({
+  menuPosition: (localStorage.getItem('bws_menu_position') as MenuPosition) || 'top',
+  setMenuPosition: (position) => {
+    localStorage.setItem('bws_menu_position', position);
+    set({ menuPosition: position });
+  },
+  sidebarCollapsed: localStorage.getItem('bws_sidebar_collapsed') === 'true',
+  toggleSidebar: () => {
+    set((state) => {
+      const next = !state.sidebarCollapsed;
+      localStorage.setItem('bws_sidebar_collapsed', String(next));
+      return { sidebarCollapsed: next };
     });
   },
 }));

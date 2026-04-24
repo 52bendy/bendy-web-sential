@@ -56,3 +56,27 @@ export interface MetricsData {
   domains_count: number;
   circuit_breaker_state: string;
 }
+
+// User info (from /api/v1/auth/me)
+export interface User {
+  id: number;
+  username: string;
+  avatar?: string;
+  role: string;
+}
+
+// Traffic data (from /api/v1/traffic)
+export interface TrafficPoint {
+  time: string;       // ISO timestamp
+  bytes: number;
+  requests: number;
+}
+export interface TrafficData {
+  ingress: TrafficPoint[];
+  egress: TrafficPoint[];
+  total_ingress_bytes: number;
+  total_egress_bytes: number;
+}
+
+// Menu position options
+export type MenuPosition = 'top' | 'left' | 'bottom';

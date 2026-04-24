@@ -1,6 +1,6 @@
 [package]
 name = "bendy-web-sential"
-version = "0.2.0"
+version = "0.7.0"
 edition = "2021"
 
 [dependencies]
@@ -15,6 +15,12 @@ hyper-util = { version = "0.1", features = ["tokio", "server-auto", "http1", "ht
 
 # HTTP client (proxy)
 reqwest = { version = "0.12", features = ["json"] }
+
+# HTTP types
+http = "1"
+
+# HTTP body utilities
+http-body-util = "0.1"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -61,9 +67,11 @@ anyhow = "1"
 
 # UUID
 uuid = { version = "1", features = ["v4", "serde"] }
+sysinfo = "0.32"
+libc = "0.2"
 
-# Environment
-config = "0.15"
+# URL encoding
+urlencoding = "2"
 
 [dev-dependencies]
 tokio-test = "0.4"

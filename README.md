@@ -39,7 +39,10 @@ bendy-web-sential/
 │   ├── main.rs              # Entry point, dual-port server
 │   ├── api/                  # Admin API handlers
 │   │   ├── auth.rs          # Login/logout/me endpoints
-│   │   └── domains.rs       # Domain & route CRUD
+│   │   ├── domains.rs       # Domain & route CRUD
+│   │   ├── metrics.rs       # System metrics
+│   │   ├── audit.rs        # Audit log
+│   │   └── prometheus.rs   # Prometheus exporter
 │   ├── config/
 │   │   └── mod.rs           # AppConfig from env vars
 │   ├── db/
@@ -48,15 +51,32 @@ bendy-web-sential/
 │   ├── gateway/
 │   │   └── proxy.rs         # Gateway request router
 │   ├── middleware/
-│   │   └── log.rs           # Request logging
+│   │   ├── ratelimit.rs     # Rate limiting
+│   │   ├── circuit_breaker.rs  # Circuit breaker
+│   │   └── validation.rs    # Request validation
 │   ├── security/
-│   │   └── jwt.rs           # JWT generation/verification
+│   │   ├── jwt.rs           # JWT generation/verification
+│   │   ├── totp.rs          # TOTP 2FA support
+│   │   └── token_blacklist.rs # Token revocation
 │   └── types.rs             # Shared types & API response
+├── frontend/                 # React + Vite admin UI
+│   ├── src/
+│   │   ├── pages/          # Page components
+│   │   ├── components/     # Reusable components
+│   │   └── lib/api.ts      # API client
+│   └── dist/                # Built frontend
+├── scripts/
+│   ├── backup.sh           # Backup/restore
+│   ├── ci-build.sh         # CI build pipeline
+│   └── release.sh          # Release automation
 ├── migrations/
-│   └── 001_init.sql          # Schema migrations
-├── data/                     # SQLite database (auto-created)
-├── .env                      # Local config (gitignored)
-├── .env.example             # Config template
+│   └── 001_init.sql        # Schema migrations
+├── data/                    # SQLite database (auto-created)
+├── Dockerfile              # Container image
+├── docker-compose.yml       # Container orchestration
+├── .env.development        # Dev config
+├── .env.staging            # Staging config
+├── .env.production         # Production config
 ├── Cargo.toml
 └── README.md
 ```
@@ -157,7 +177,24 @@ Returns authenticated user info.
 | `BWS_DATABASE_URL` | data/bws.db | SQLite database path |
 | `BWS_JWT_SECRET` | changeme... | JWT signing secret |
 | `BWS_JWT_EXPIRY_SECS` | 86400 | Token expiry (seconds) |
+| `BWS_TOTP_AES_KEY` | — | TOTP AES-256-CBC encryption key |
 | `BWS_LOG_LEVEL` | info | Log level (trace/debug/info/warn/error) |
+| `BWS_RATE_LIMIT_IP_ENABLED` | true | Per-IP rate limiting |
+| `BWS_RATE_LIMIT_IP_PER_SECOND` | 10 | Per-IP request limit |
+| `BWS_RATE_LIMIT_GLOBAL_ENABLED` | true | Global rate limiting |
+| `BWS_RATE_LIMIT_GLOBAL_PER_SECOND` | 1000 | Global request limit |
+| `BWS_CIRCUIT_BREAKER_ENABLED` | false | Circuit breaker |
+| `BWS_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | 5 | Failure threshold |
+| `BWS_CIRCUIT_BREAKER_SUCCESS_THRESHOLD` | 3 | Recovery threshold |
+| `BWS_CIRCUIT_BREAKER_OPEN_TIMEOUT_SECS` | 30 | Open state timeout |
+| `BWS_RETRY_ENABLED` | false | Retry middleware |
+| `BWS_RETRY_MAX_ATTEMPTS` | 3 | Max retry attempts |
+| `BWS_RETRY_BASE_DELAY_MS` | 100 | Retry base delay (ms) |
+| `BWS_RETRY_MAX_DELAY_MS` | 5000 | Retry max delay (ms) |
+| `BWS_BACKUP_ENABLED` | false | Enable backup |
+| `BWS_BACKUP_DIR` | backups | Backup directory |
+| `BWS_BACKUP_INTERVAL_HOURS` | 24 | Backup interval |
+| `BWS_BACKUP_RETENTION_DAYS` | 7 | Backup retention |
 
 ## Error Codes
 
@@ -177,9 +214,40 @@ Returns authenticated user info.
 
 All errors return `{"code": N, "message": "...", "data": null}`.
 
+## Docker Deployment
+
+```bash
+# Generate secrets
+export BWS_JWT_SECRET=$(openssl rand -base64 32)
+export BWS_TOTP_AES_KEY=$(openssl rand -base64 32)
+
+# Start services
+docker-compose up -d
+
+# Check health
+docker-compose ps
+docker-compose logs --tail=50
+```
+
+The gateway will be available at `http://localhost:8080`
+The admin API will be available at `http://localhost:8081`
+
+## Backup and Restore
+
+```bash
+# Create backup (saves DB + TOTP key)
+./scripts/backup.sh
+
+# List backups
+./scripts/backup.sh --list
+
+# Restore database
+./scripts/backup.sh --restore backups/bws_db_20240115_120000.sqlite
+```
+
 ## Version
 
-Current: **v0.2.0** (Phase 1 — Core Foundation)
+Current: **v0.6.0** (Phase 6 — Production Ready)
 
 See [maintain.md](maintain.md) for version history and [plan.md](plan.md) for development roadmap.
 

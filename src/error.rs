@@ -75,7 +75,7 @@ impl AppError {
             AppError::CircuitBreakerOpen => 2002,
             AppError::NotFound => 3001,
             AppError::AlreadyExists => 3002,
-            AppError::InvalidParam => 1003,
+            AppError::InvalidParam => 1005,
             AppError::InternalError => 4001,
             AppError::DatabaseError(_) => 4002,
             AppError::ConfigError(_) => 4003,

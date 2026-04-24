@@ -202,6 +202,13 @@ pub struct AppConfig {
     pub database_url: String,
     pub log_level: String,
     pub totp_aes_key: Option<String>,
+    pub github_client_id: Option<String>,
+    pub github_client_secret: Option<String>,
+    pub github_redirect_uri: Option<String>,
+    pub github_admin_emails: Vec<String>,
+    pub frontend_url: String,
+    pub cloudflare_api_token: Option<String>,
+    pub cloudflare_zone_identifier: Option<String>,
     pub rate_limit: RateLimitConfig,
     pub circuit_breaker: CircuitBreakerConfig,
     pub retry: RetryConfig,
@@ -218,6 +225,13 @@ impl Default for AppConfig {
             database_url: "data/bws.db".into(),
             log_level: "info".into(),
             totp_aes_key: None,
+            github_client_id: None,
+            github_client_secret: None,
+            github_redirect_uri: None,
+            github_admin_emails: vec![],
+            frontend_url: "http://128.140.80.71".into(),
+            cloudflare_api_token: None,
+            cloudflare_zone_identifier: None,
             rate_limit: RateLimitConfig::default(),
             circuit_breaker: CircuitBreakerConfig::default(),
             retry: RetryConfig::default(),
@@ -246,6 +260,19 @@ impl AppConfig {
             database_url: env::var("BWS_DATABASE_URL").unwrap_or_else(|_| "data/bws.db".into()),
             log_level: env::var("BWS_LOG_LEVEL").unwrap_or_else(|_| "info".into()),
             totp_aes_key: env::var("BWS_TOTP_AES_KEY").ok(),
+            github_client_id: env::var("BWS_GITHUB_CLIENT_ID").ok(),
+            github_client_secret: env::var("BWS_GITHUB_CLIENT_SECRET").ok(),
+            github_redirect_uri: env::var("BWS_GITHUB_REDIRECT_URI").ok(),
+            github_admin_emails: env::var("BWS_GITHUB_ADMIN_EMAILS")
+                .unwrap_or_default()
+                .split(',')
+                .map(|s| s.trim().to_lowercase())
+                .filter(|s| !s.is_empty())
+                .collect(),
+            frontend_url: env::var("BWS_FRONTEND_URL")
+                .unwrap_or_else(|_| "http://128.140.80.71".into()),
+            cloudflare_api_token: env::var("BWS_CLOUDFLARE_API_TOKEN").ok(),
+            cloudflare_zone_identifier: env::var("BWS_CLOUDFLARE_ZONE_ID").ok(),
             rate_limit: RateLimitConfig::from_env(),
             circuit_breaker: CircuitBreakerConfig::from_env(),
             retry: RetryConfig::from_env(),

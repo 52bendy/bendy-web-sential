@@ -1,6 +1,6 @@
 use axum::{
     extract::State,
-    routing::{get},
+    routing::get,
     Router, Json,
 };
 use serde::Serialize;
@@ -34,21 +34,22 @@ pub struct MetricsData {
 pub async fn get_metrics(
     State(state): State<MetricsState>,
 ) -> Result<Json<ApiResponse<MetricsData>>, AppError> {
-    let conn = state.db.lock().map_err(|_| AppError::InternalError)?;
+    let (active_routes, domains_count) = {
+        let conn = state.db.lock().map_err(|_| AppError::InternalError)?;
+        let active_routes: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM bws_routes WHERE active = 1",
+            [],
+            |row| row.get(0),
+        ).unwrap_or(0);
+        let domains_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM bws_domains WHERE active = 1",
+            [],
+            |row| row.get(0),
+        ).unwrap_or(0);
+        (active_routes, domains_count)
+    };
 
-    let active_routes: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM bws_routes WHERE active = 1",
-        [],
-        |row| row.get(0),
-    ).unwrap_or(0);
-
-    let domains_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM bws_domains WHERE active = 1",
-        [],
-        |row| row.get(0),
-    ).unwrap_or(0);
-
-    let cb_metrics = state.circuit_breaker.metrics();
+    let cb_metrics = state.circuit_breaker.metrics().await;
     let cb_state = match cb_metrics.state {
         crate::middleware::circuit_breaker::CircuitState::Closed => "Closed",
         crate::middleware::circuit_breaker::CircuitState::Open => "Open",

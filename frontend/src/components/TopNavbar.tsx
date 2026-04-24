@@ -1,8 +1,10 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
 import i18n from '@/i18n';
 import { Moon, Sun, LogOut, LayoutDashboard, Globe, Route, ScrollText, Settings } from 'lucide-react';
 import { useThemeStore, useAuthStore } from '@/store';
+import api from '@/lib/api';
 
 const navItems = [
   { path: '/', label: 'nav.dashboard', icon: LayoutDashboard },
@@ -12,13 +14,67 @@ const navItems = [
   { path: '/settings', label: 'nav.settings', icon: Settings },
 ];
 
-export default function Navbar() {
+function UserAvatar() {
+  const { data } = useQuery({
+    queryKey: ['user'],
+    queryFn: async () => {
+      const { data } = await api.get('/v1/auth/me');
+      return data;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Handle both old API (authenticated: true) and new API (User object)
+  const user = data?.data?.username ? data.data : null;
+
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  if (!user) {
+    return (
+      <div className="w-8 h-8 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center">
+        <div className="w-6 h-6 rounded-full bg-[var(--border-default)] animate-pulse" />
+      </div>
+    );
+  }
+
+  if (user.avatar) {
+    return (
+      <img
+        src={user.avatar}
+        alt={user.username}
+        className="w-8 h-8 rounded-full object-cover border border-[var(--border-default)]"
+        onError={(e) => {
+          (e.target as HTMLImageElement).style.display = 'none';
+          (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+        }}
+      />
+    );
+  }
+
+  return (
+    <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-medium">
+      {getInitials(user.username)}
+    </div>
+  );
+}
+
+export default function TopNavbar() {
   const { t } = useTranslation();
   const location = useLocation();
   const { dark, toggle } = useThemeStore();
   const { setToken } = useAuthStore();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await api.post('/v1/auth/logout');
+    } catch (_) {}
     setToken(null);
     window.location.href = '/login';
   };
@@ -62,6 +118,7 @@ export default function Navbar() {
         >
           {dark ? <Sun size={18} /> : <Moon size={18} />}
         </button>
+        <UserAvatar />
         <button
           onClick={handleLogout}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors"
