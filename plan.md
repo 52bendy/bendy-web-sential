@@ -179,7 +179,7 @@
 
 ---
 
-## 📅 Phase 5: 自动化与灾备 (v0.6.x)
+## 📅 Phase 5: 自动化与灾备 (v0.6.0) — ✅ 已完成
 
 - [ ] **5.1 三环境管理**（**接入 Phase 1 延后的环境分离**）
   - [ ] `.env.development` / `.env.staging` / `.env.production` 分离
