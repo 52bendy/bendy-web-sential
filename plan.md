@@ -28,53 +28,53 @@
 
 ---
 
-## 📅 Phase 1: 核心基础构建 (v0.2.x) — 开发中
+## 📅 Phase 1: 核心基础构建 (v0.2.x) — ✅ 已完成
 
 > **策略：先做有用部分，延后的部分≠不做，只是侧重点不同，记录清晰不遗漏。**
 
 ### ✅ Phase 1 必做（本次迭代范围）
 
-- [ ] **1.1.1** Rust 项目初始化（cargo init）
-  - [ ] 设置 Cargo.toml 核心依赖（axum, tokio, tower, reqwest, rusqlite, serde, tracing, jsonwebtoken, totp 等）
-  - [ ] 建立 src/ 目录结构（gateway/, middleware/, api/, config/, db/, types.rs, error.rs, main.rs）
+- [x] **1.1.1** Rust 项目初始化（cargo init）
+  - [x] 设置 Cargo.toml 核心依赖（axum, tokio, tower, reqwest, rusqlite, serde, tracing, jsonwebtoken, totp 等）
+  - [x] 建立 src/ 目录结构（gateway/, middleware/, api/, config/, db/, types.rs, error.rs, main.rs）
 
-- [ ] **1.1.2** 环境配置
-  - [ ] 创建 `.env.example`（所有环境变量注释模板）
-  - [ ] 创建 `.env`（本地密钥，**必须加入 .gitignore**）
-  - [ ] 创建 `.gitignore`（.env, target/, .DS_Store 等）
-  - [ ] Git 初始化，建立 `main` / `dev` 分支
+- [x] **1.1.2** 环境配置
+  - [x] 创建 `.env.example`（所有环境变量注释模板）
+  - [x] 创建 `.env`（本地密钥，**必须加入 .gitignore**）
+  - [x] 创建 `.gitignore`（.env, target/, .DS_Store 等）
+  - [x] Git 初始化，建立 `main` / `dev` 分支
 
-- [ ] **1.2.1** 数据库迁移系统
-  - [ ] 配置 SQLite 连接（数据库路径从 `.env` 读取，业务前缀 `bws_`）
-  - [ ] 设计表结构：`bws_domains`（域名）、`bws_routes`（路由规则）、`bws_admin_users`（管理员）、`bws_audit_log`（审计日志表）
-  - [ ] 编写 `migrations/001_init.sql` 迁移文件
-  - [ ] DB Migration 自动执行脚本（启动时自动执行未执行的迁移）
+- [x] **1.2.1** 数据库迁移系统
+  - [x] 配置 SQLite 连接（数据库路径从 `.env` 读取，业务前缀 `bws_`）
+  - [x] 设计表结构：`bws_domains`（域名）、`bws_routes`（路由规则）、`bws_admin_users`（��理员）、`bws_audit_log`（审计日志表）
+  - [x] 编写 `migrations/001_init.sql` 迁移文件
+  - [x] DB Migration 自动执行脚本（启动时自动执行未执行的迁移）
 
-- [ ] **1.3.1** Gateway 核心逻辑
-  - [ ] Gateway 监听 **8080** 端口（HTTP）
-  - [ ] Admin API 监听 **3000** 端口
-  - [ ] 域名 + 路径路由匹配逻辑
-  - [ ] action: proxy（转发到上游）/ redirect（重定向）/ static（静态文件）三种动作
-  - [ ] 错误码规范（ErrorCode enum: 1001-1999 认证类，2001-2999 流控类）
-  - [ ] 统一返回格式 `{code, message, data}`
+- [x] **1.3.1** Gateway 核心逻辑
+  - [x] Gateway 监听 **8080** 端口（HTTP）
+  - [x] Admin API 监听 **3000** 端口
+  - [x] 域名 + 路径路由匹配逻辑
+  - [x] action: proxy（转发到上游）/ redirect（重定向）/ static（静态文件）三种动作
+  - [x] 错误码规范（ErrorCode enum: 1001-1999 认证类，2001-2999 流控类）
+  - [x] 统一返回格式 `{code, message, data}`
 
-- [ ] **1.3.2** JWT 简单认证（Phase 1 先做，Phase 4 再加 TOTP 加固）
-  - [ ] 用户名密码登录，签发 JWT Token
-  - [ ] Token 认证中间件
-  - [ ] 登录接口 `/api/v1/auth/login`
-  - [ ] 登出接口 `/api/v1/auth/logout`
+- [x] **1.3.2** JWT 简单认证（Phase 1 先做，Phase 4 再加 TOTP 加固）
+  - [x] 用户名密码登录，签发 JWT Token
+  - [x] Token 认证中间件
+  - [x] 登录接口 `/api/v1/auth/login`
+  - [x] 登出接口 `/api/v1/auth/logout`
 
-- [ ] **1.4.1** 结构化日志
-  - [ ] tracing + JSON 格式输出
-  - [ ] 请求日志中间件（记录请求路径、域名、耗时、状态码）
-  - [ ] 关键操作日志（登录、配置变更）
+- [x] **1.4.1** 结构化日志
+  - [x] tracing + JSON 格式输出
+  - [x] 请求日志中间件（记录请求路径、域名、耗时、状态码）
+  - [x] 关键操作日志（登录、配置变更）
 
-- [ ] **1.5.1** README 文档
-  - [ ] 业务前缀 `bws_` 说明
-  - [ ] 项目说明、技术栈介绍
-  - [ ] 本地开发启动说明
-  - [ ] 环境变量说明
-  - [ ] 目录结构说明
+- [x] **1.5.1** README 文档
+  - [x] 业务前缀 `bws_` 说明
+  - [x] 项目说明、技术栈介绍
+  - [x] 本地开发启动说明
+  - [x] 环境变量说明
+  - [x] 目录结构说明
 
 ### ⏸ Phase 1 延后项（后续 Phase 按计划做，不遗漏）
 
