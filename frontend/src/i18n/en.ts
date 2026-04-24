@@ -63,6 +63,8 @@ const en = {
     dnsProxiedLabel: 'Proxy through CloudFlare (Orange Cloud)',
     dnsNotConfigured: 'CloudFlare DNS not configured. Set BWS_CLOUDFLARE_API_TOKEN and BWS_CLOUDFLARE_ZONE_ID.',
     dnsError: 'Failed to update DNS record',
+    hostingService: 'Hosting Service',
+    noHosting: 'None',
   },
   routes: {
     title: 'Routes',

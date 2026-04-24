@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Globe } from 'lucide-react';
+import { Plus, Pencil, Trash2, Globe, Cloud } from 'lucide-react';
 import api from '@/lib/api';
 import type { Domain } from '@/types';
 
@@ -44,7 +44,7 @@ export default function Domains() {
     priority: 0,
   });
 
-  const [form, setForm] = useState({ domain: '', description: '', active: true });
+  const [form, setForm] = useState({ domain: '', description: '', hosting_service: '', active: true });
 
   const { data, isLoading } = useQuery<{ code: number; data: Domain[] }>({
     queryKey: ['domains'],
@@ -144,13 +144,13 @@ export default function Domains() {
 
   const openCreate = () => {
     setEditDomain(null);
-    setForm({ domain: '', description: '', active: true });
+    setForm({ domain: '', description: '', hosting_service: '', active: true });
     setModalOpen(true);
   };
 
   const openEdit = (d: Domain) => {
     setEditDomain(d);
-    setForm({ domain: d.domain, description: d.description || '', active: d.active });
+    setForm({ domain: d.domain, description: d.description || '', hosting_service: d.hosting_service || '', active: d.active });
     setModalOpen(true);
   };
 
@@ -287,6 +287,24 @@ export default function Domains() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
+                        {d.hosting_service && (
+                          <button
+                            onClick={() => setTab('dns')}
+                            className="p-1.5 rounded hover:bg-[var(--bg-tertiary)] mr-1"
+                            title="DNS Management"
+                          >
+                            <Cloud size={14} className="text-orange-500" />
+                          </button>
+                        )}
+                        {d.hosting_service === 'cloudflare' && !dnsData?.data && (
+                          <button
+                            onClick={() => setTab('dns')}
+                            className="p-1.5 rounded hover:bg-[var(--bg-tertiary)] mr-1"
+                            title="DNS Not Configured"
+                          >
+                            <Cloud size={14} className="text-gray-400" />
+                          </button>
+                        )}
                         <button onClick={() => openEdit(d)} className="p-1.5 rounded hover:bg-[var(--bg-tertiary)]">
                           <Pencil size={14} />
                         </button>
@@ -396,6 +414,17 @@ export default function Domains() {
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   className="w-full px-3 py-2 border border-[var(--border-default)] rounded bg-[var(--bg-secondary)]"
                 />
+              </div>
+              <div>
+                <label className="block text-sm mb-1">{t('domains.hostingService')}</label>
+                <select
+                  value={form.hosting_service}
+                  onChange={(e) => setForm({ ...form, hosting_service: e.target.value })}
+                  className="w-full px-3 py-2 border border-[var(--border-default)] rounded bg-[var(--bg-secondary)]"
+                >
+                  <option value="">{t('domains.noHosting')}</option>
+                  <option value="cloudflare">CloudFlare</option>
+                </select>
               </div>
               <label className="flex items-center gap-2">
                 <input

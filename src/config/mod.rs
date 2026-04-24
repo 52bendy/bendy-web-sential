@@ -213,6 +213,8 @@ pub struct AppConfig {
     pub circuit_breaker: CircuitBreakerConfig,
     pub retry: RetryConfig,
     pub backup: BackupConfig,
+    pub sso_enabled: bool,
+    pub sso_secret: Option<String>,
 }
 
 impl Default for AppConfig {
@@ -236,6 +238,8 @@ impl Default for AppConfig {
             circuit_breaker: CircuitBreakerConfig::default(),
             retry: RetryConfig::default(),
             backup: BackupConfig::default(),
+            sso_enabled: false,
+            sso_secret: None,
         }
     }
 }
@@ -277,6 +281,11 @@ impl AppConfig {
             circuit_breaker: CircuitBreakerConfig::from_env(),
             retry: RetryConfig::from_env(),
             backup: BackupConfig::from_env(),
+            sso_enabled: env::var("BWS_SSO_ENABLED")
+                .unwrap_or_else(|_| "false".into())
+                .parse()
+                .unwrap_or(false),
+            sso_secret: env::var("BWS_SSO_SECRET").ok(),
         }
     }
 }

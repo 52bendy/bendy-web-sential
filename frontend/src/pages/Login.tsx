@@ -13,13 +13,36 @@ export default function Login() {
   const [form, setForm] = useState({ username: '', password: '' });
   const [searchParams] = useSearchParams();
 
-  // Handle OAuth callback token
+  // Handle OAuth callback token or SSO token exchange
   useEffect(() => {
     const token = searchParams.get('token');
     if (token) {
-      setToken(token);
-      toast.success(t('auth.login'));
-      navigate('/', { replace: true });
+      // Check if it's an SSO token (contains dots) that needs exchange
+      if (token.includes('.') && token.split('.').length === 3) {
+        // It's an SSO token, exchange it for a JWT
+        setLoading(true);
+        api.post('/v1/auth/sso/exchange', { token })
+          .then(({ data }) => {
+            if (data.code === 0 && data.data?.token) {
+              setToken(data.data.token);
+              toast.success(t('auth.login'));
+              navigate('/', { replace: true });
+            } else {
+              toast.error(data.message || t('auth.loginFailed'));
+            }
+          })
+          .catch(() => {
+            toast.error(t('auth.loginFailed'));
+          })
+          .finally(() => {
+            setLoading(false);
+          });
+      } else {
+        // It's already a JWT token from GitHub OAuth
+        setToken(token);
+        toast.success(t('auth.login'));
+        navigate('/', { replace: true });
+      }
     }
   }, [searchParams, setToken, navigate, t]);
 

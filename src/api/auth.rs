@@ -57,6 +57,8 @@ pub struct AuthState {
     pub github_redirect_uri: Option<String>,
     pub github_admin_emails: Vec<String>,
     pub frontend_url: String,
+    pub sso_enabled: bool,
+    pub sso_secret: Option<String>,
 }
 
 pub fn router(db: DbPool, config: &AppConfig, blacklist: Arc<TokenBlacklist>) -> Router {
@@ -70,6 +72,8 @@ pub fn router(db: DbPool, config: &AppConfig, blacklist: Arc<TokenBlacklist>) ->
         github_redirect_uri: config.github_redirect_uri.clone(),
         github_admin_emails: config.github_admin_emails.clone(),
         frontend_url: config.frontend_url.clone(),
+        sso_enabled: config.sso_enabled,
+        sso_secret: config.sso_secret.clone(),
     };
 
     Router::new()
@@ -80,6 +84,7 @@ pub fn router(db: DbPool, config: &AppConfig, blacklist: Arc<TokenBlacklist>) ->
         .route("/api/v1/auth/totp/setup", post(setup_totp))
         .route("/api/v1/auth/totp/verify", post(verify_totp))
         .route("/api/v1/auth/totp/disable", post(disable_totp))
+        .route("/api/v1/auth/sso/exchange", post(sso_exchange))
         .route("/api/auth/github/login", get(github_login))
         .route("/api/auth/github/callback", get(github_callback))
         .with_state(state)
@@ -565,4 +570,102 @@ pub async fn github_callback(
 
     let redirect_url = format!("{}/login?token={}&jti={}", state.frontend_url.trim_end_matches('/'), token, jti);
     Ok(axum::response::Redirect::to(&redirect_url))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SsoExchangeRequest {
+    pub token: String,
+}
+
+/// POST /api/v1/auth/sso/exchange
+/// Exchange an SSO token for a session JWT
+pub async fn sso_exchange(
+    State(state): State<AuthState>,
+    Json(payload): Json<SsoExchangeRequest>,
+) -> Result<Json<ApiResponse<LoginResponse>>, AppError> {
+    if !state.sso_enabled {
+        return Err(AppError::ConfigError("SSO token login is not enabled".into()));
+    }
+
+    let secret = state.sso_secret.as_ref().ok_or(AppError::ConfigError("SSO secret not configured".into()))?;
+
+    // Parse and validate the SSO token
+    let parts: Vec<&str> = payload.token.split('.').collect();
+    if parts.len() != 3 {
+        return Err(AppError::TokenInvalid);
+    }
+
+    // Verify signature (HS256)
+    let _header = base64_url_decode(parts[0])?;
+    let payload_bytes = base64_url_decode(parts[1])?;
+    let signature_base = format!("{}.{}", parts[0], parts[1]);
+
+    use hmac::{Hmac, Mac};
+    type HmacSha256 = Hmac<sha2::Sha256>;
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|_| AppError::InternalError)?;
+    mac.update(signature_base.as_bytes());
+    let expected = mac.finalize().into_bytes();
+    let provided = base64_url_decode(parts[2])?;
+
+    if expected.as_slice() != provided.as_slice() {
+        return Err(AppError::TokenInvalid);
+    }
+
+    #[derive(serde::Deserialize)]
+    struct SsoClaims {
+        sub: String,
+        exp: usize,
+        iat: usize,
+        #[serde(default)]
+        role: Option<String>,
+    }
+
+    let claims: SsoClaims = serde_json::from_slice(&payload_bytes)
+        .map_err(|_| AppError::TokenInvalid)?;
+
+    // Validate expiration
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as usize;
+    if claims.exp < now {
+        return Err(AppError::TokenExpired);
+    }
+
+    // Verify user exists in database
+    let conn = state.db.lock().map_err(|_| AppError::InternalError)?;
+    let user_exists: bool = conn.query_row(
+        "SELECT 1 FROM bws_admin_users WHERE username = ?1 AND active = 1",
+        [&claims.sub],
+        |_| Ok(true),
+    ).unwrap_or(false);
+    drop(conn);
+
+    if !user_exists {
+        return Err(AppError::InvalidCredentials);
+    }
+
+    tracing::info!(username = %claims.sub, action = "sso_exchange", "audit");
+
+    let (jwt, jti) = state.jwt.generate(&claims.sub);
+    Ok(Json(ApiResponse::success(LoginResponse {
+        token: jwt,
+        expires_in: 86400,
+        jti: Some(jti),
+    })))
+}
+
+fn base64_url_decode(input: &str) -> Result<Vec<u8>, AppError> {
+    // Replace URL-safe chars with standard base64 chars
+    let normalized = input.replace('-', "+").replace('_', "/");
+    // Add padding if needed
+    let padded = match normalized.len() % 4 {
+        2 => format!("{}==", normalized),
+        3 => format!("{}=", normalized),
+        _ => normalized,
+    };
+    // Use base64 crate to decode
+    let bytes = base64::decode(&padded).map_err(|_| AppError::TokenInvalid)?;
+    Ok(bytes)
 }

@@ -6,6 +6,7 @@ pub struct Domain {
     pub id: i64,
     pub domain: String,
     pub description: Option<String>,
+    pub hosting_service: Option<String>,
     pub active: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
