@@ -19,6 +19,8 @@ use crate::error::AppError;
 use crate::middleware::ratelimit::RateLimiters;
 use crate::middleware::circuit_breaker::CircuitBreaker;
 use crate::middleware::retry::RetryClient;
+use crate::security::TokenBlacklist;
+use crate::api::prometheus::{PrometheusMetrics, router as prometheus_router};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -51,6 +53,8 @@ async fn main() -> anyhow::Result<()> {
     let rate_limiters = RateLimiters::new(&config.rate_limit);
     let cb = Arc::new(CircuitBreaker::new(config.circuit_breaker.clone()));
     let retry_client = Arc::new(RetryClient::new(config.retry.clone()));
+    let blacklist = Arc::new(TokenBlacklist::new());
+    let metrics = PrometheusMetrics::new();
 
     let state = Arc::new(AppState {
         db: db.clone(),
@@ -65,7 +69,7 @@ async fn main() -> anyhow::Result<()> {
         start_gateway(gateway_state).await;
     });
 
-    let admin = build_admin_server(db.clone(), &config, cb);
+    let admin = build_admin_server(db.clone(), &config, cb, blacklist, metrics);
     let admin_port = config.admin_port;
     let _admin = tokio::spawn(async move {
         let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", admin_port)).await.unwrap();
@@ -78,13 +82,20 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn build_admin_server(db: DbPool, config: &AppConfig, cb: Arc<CircuitBreaker>) -> axum::Router {
+fn build_admin_server(
+    db: DbPool,
+    config: &AppConfig,
+    cb: Arc<CircuitBreaker>,
+    blacklist: Arc<TokenBlacklist>,
+    prometheus_metrics: PrometheusMetrics,
+) -> axum::Router {
     use axum::routing::get;
 
-    let auth = api::auth::router(db.clone(), config);
+    let auth = api::auth::router(db.clone(), config, blacklist);
     let gateway_api = api::domains::router(db.clone());
     let audit_api = api::audit::router(db.clone());
     let metrics_api = api::metrics::router(db.clone(), cb);
+    let prom = prometheus_router(prometheus_metrics);
     let health = Router::new().route("/health", get(|| async { "ok" }));
 
     axum::Router::new()
@@ -93,6 +104,7 @@ fn build_admin_server(db: DbPool, config: &AppConfig, cb: Arc<CircuitBreaker>) -
         .merge(gateway_api)
         .merge(audit_api)
         .merge(metrics_api)
+        .merge(prom)
         .layer(TraceLayer::new_for_http())
 }
 
