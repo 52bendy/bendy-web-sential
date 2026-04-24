@@ -155,6 +155,45 @@ impl RetryConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BackupConfig {
+    pub enabled: bool,
+    pub dir: String,
+    pub interval_hours: u32,
+    pub retention_days: u32,
+}
+
+impl Default for BackupConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            dir: "backups".into(),
+            interval_hours: 24,
+            retention_days: 7,
+        }
+    }
+}
+
+impl BackupConfig {
+    pub fn from_env() -> Self {
+        Self {
+            enabled: env::var("BWS_BACKUP_ENABLED")
+                .unwrap_or_else(|_| "false".into())
+                .parse()
+                .unwrap_or(false),
+            dir: env::var("BWS_BACKUP_DIR").unwrap_or_else(|_| "backups".into()),
+            interval_hours: env::var("BWS_BACKUP_INTERVAL_HOURS")
+                .unwrap_or_else(|_| "24".into())
+                .parse()
+                .unwrap_or(24),
+            retention_days: env::var("BWS_BACKUP_RETENTION_DAYS")
+                .unwrap_or_else(|_| "7".into())
+                .parse()
+                .unwrap_or(7),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AppConfig {
     pub gateway_port: u16,
     pub admin_port: u16,
@@ -166,6 +205,7 @@ pub struct AppConfig {
     pub rate_limit: RateLimitConfig,
     pub circuit_breaker: CircuitBreakerConfig,
     pub retry: RetryConfig,
+    pub backup: BackupConfig,
 }
 
 impl Default for AppConfig {
@@ -181,6 +221,7 @@ impl Default for AppConfig {
             rate_limit: RateLimitConfig::default(),
             circuit_breaker: CircuitBreakerConfig::default(),
             retry: RetryConfig::default(),
+            backup: BackupConfig::default(),
         }
     }
 }
@@ -208,6 +249,7 @@ impl AppConfig {
             rate_limit: RateLimitConfig::from_env(),
             circuit_breaker: CircuitBreakerConfig::from_env(),
             retry: RetryConfig::from_env(),
+            backup: BackupConfig::from_env(),
         }
     }
 }
