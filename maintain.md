@@ -79,6 +79,69 @@
 
 ---
 
+## 运维操作指南
+
+### 备份与恢复
+
+```bash
+# 手动备份（数据库 + TOTP 密钥加密备份）
+./scripts/backup.sh
+
+# 列出可用备份
+./scripts/backup.sh --list
+
+# 恢复数据库
+./scripts/backup.sh --restore backups/bws_db_20240115_120000.sqlite
+
+# 从加密备份提取 TOTP 密钥
+./scripts/backup.sh --restore backups/bws_totp_key_20240115_120000.enc
+```
+
+环境变量控制备份行为：
+- `BWS_BACKUP_DIR` — 备份目录（默认: `./backups`）
+- `BWS_BACKUP_RETENTION_DAYS` — 保留天数（默认: 7）
+- `BWS_BACKUP_ENCRYPTION_PASSPHRASE` — TOTP 密钥加密密码
+
+### TOTP 密钥管理
+
+```bash
+# 生成新密钥
+openssl rand -base64 32
+
+# 迁移到新服务器：备份 + 恢复 TOTP 密钥
+# 1. 旧服务器: ./scripts/backup.sh
+# 2. 复制 .enc 文件到新服务器
+# 3. 新服务器: ./scripts/backup.sh --restore <file>
+# 4. 更新 .env 中的 BWS_TOTP_AES_KEY
+```
+
+**注意**: 更换 TOTP AES 密钥后，所有已注册用户的 TOTP 将失效，需重新注册。
+
+### 环境切换
+
+| 环境 | 配置文件 | 启动方式 |
+|------|---------|----------|
+| 开发 | `.env.development` | `cargo run` |
+| Staging | `.env.staging` | `cargo run` |
+| 生产 | `.env.production` | `docker-compose up -d` |
+
+### 版本升级
+
+1. `./scripts/backup.sh` 备份
+2. `git pull origin dev`
+3. `cargo build --release`
+4. 重启服务
+5. `./scripts/ci-build.sh` 验证
+
+### 安全扫描
+
+```bash
+cargo install cargo-audit
+cargo audit
+```
+
+---
+
 ## 更新记录模板
 
 每次版本更新时，按以下格式追加记录。
