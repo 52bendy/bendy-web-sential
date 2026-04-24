@@ -1,0 +1,8 @@
+# bendy-web-sential 开发状态
+# 此文件由 auto-dev.sh 管理，请勿手动修改
+
+current_phase: "Phase 1"
+current_version: "0.2.0"
+phase_status: "completed"
+last_update: "2026-04-24T01:56:08"
+pending_tasks: []

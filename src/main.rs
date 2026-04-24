@@ -16,6 +16,9 @@ use crate::config::AppConfig;
 use crate::db::DbPool;
 use crate::gateway::proxy::{AppState, start_gateway};
 use crate::error::AppError;
+use crate::middleware::ratelimit::RateLimiters;
+use crate::middleware::circuit_breaker::CircuitBreaker;
+use crate::middleware::retry::RetryClient;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -45,9 +48,16 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("created default admin user: admin / bendy2024");
     }
 
+    let rate_limiters = RateLimiters::new(&config.rate_limit);
+    let circuit_breaker = Arc::new(CircuitBreaker::new(config.circuit_breaker.clone()));
+    let retry_client = Arc::new(RetryClient::new(config.retry.clone()));
+
     let state = Arc::new(AppState {
         db: db.clone(),
         config: config.clone(),
+        rate_limiters,
+        circuit_breaker,
+        retry_client,
     });
 
     let gateway_state = state.clone();
