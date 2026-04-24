@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use std::net::IpAddr;
+
 use axum::{
     extract::State,
     http::{Request, StatusCode},
@@ -6,15 +9,21 @@ use axum::{
     routing::any,
     Router, Json,
 };
-use std::sync::Arc;
 use tower_http::trace::TraceLayer;
+
 use crate::config::AppConfig;
 use crate::db::DbPool;
+use crate::middleware::ratelimit::RateLimiters;
+use crate::middleware::circuit_breaker::CircuitBreaker;
+use crate::middleware::retry::RetryClient;
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: DbPool,
     pub config: AppConfig,
+    pub rate_limiters: RateLimiters,
+    pub circuit_breaker: Arc<CircuitBreaker>,
+    pub retry_client: Arc<RetryClient>,
 }
 
 pub async fn start_gateway(state: Arc<AppState>) {
@@ -30,31 +39,68 @@ pub async fn start_gateway(state: Arc<AppState>) {
     axum::serve(listener, app).await.unwrap();
 }
 
+fn extract_ip(req: &Request<Body>) -> IpAddr {
+    req.headers()
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .and_then(|s| s.trim().parse().ok())
+        .or_else(|| {
+            req.headers()
+                .get("cf-connecting-ip")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.trim().parse().ok())
+        })
+        .unwrap_or_else(|| IpAddr::from([0, 0, 0, 0]))
+}
+
 async fn proxy_handler(
     State(state): State<Arc<AppState>>,
     req: Request<Body>,
 ) -> Response {
-    let host = req.headers().get("host").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+    let ip = extract_ip(&req);
     let path = req.uri().path().to_string();
+
+    if let Some(err) = crate::middleware::ratelimit::check_rate_limit(&state.rate_limiters, &ip, &path).await {
+        return err.into_response();
+    }
+
+    let host = req.headers().get("host").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
 
     if let Some((action, target)) = find_route(&state.db, &host, &path).await {
         match action.as_str() {
             "proxy" => {
-                let client = reqwest::Client::new();
-                let url = format!("{}{}", target, req.uri().path_and_query().map(|pq| pq.to_string()).unwrap_or_default());
-                let res = client.request(req.method().clone(), &url)
-                    .headers(req.headers().clone())
-                    .send()
-                    .await;
-                match res {
+                let uri_path = req.uri().path_and_query().map(|pq| pq.to_string()).unwrap_or_default();
+                let url = format!("{}{}", target.trim_end_matches('/'), uri_path);
+
+                let headers = req.headers().clone();
+                let method = req.method().clone();
+
+                if !state.circuit_breaker.try_acquire().await {
+                    tracing::warn!("circuit breaker rejected request");
+                    return crate::error::AppError::CircuitBreakerOpen.into_response();
+                }
+
+                let resp = state.retry_client.request(method, &url, &headers).await;
+
+                match resp {
                     Ok(resp) => {
-                        let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::OK);
+                        let upstream_status = resp.status().as_u16();
+                        let status = StatusCode::from_u16(upstream_status).unwrap_or(StatusCode::OK);
                         let ct = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("text/plain").to_string();
                         let body = resp.bytes().await.unwrap_or_default().to_vec();
+
+                        if upstream_status >= 500 {
+                            state.circuit_breaker.record_failure().await;
+                        } else {
+                            state.circuit_breaker.record_success().await;
+                        }
+
                         (status, [("content-type", ct.as_str())], body).into_response()
                     }
                     Err(e) => {
-                        tracing::error!(error = %e, "proxy upstream failed");
+                        tracing::error!(error = %e, "proxy upstream failed after retries");
+                        state.circuit_breaker.record_failure().await;
                         (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"code": 4004, "message": format!("upstream error: {}", e), "data": null}))).into_response()
                     }
                 }
