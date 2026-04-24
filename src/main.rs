@@ -49,14 +49,14 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let rate_limiters = RateLimiters::new(&config.rate_limit);
-    let circuit_breaker = Arc::new(CircuitBreaker::new(config.circuit_breaker.clone()));
+    let cb = Arc::new(CircuitBreaker::new(config.circuit_breaker.clone()));
     let retry_client = Arc::new(RetryClient::new(config.retry.clone()));
 
     let state = Arc::new(AppState {
         db: db.clone(),
         config: config.clone(),
         rate_limiters,
-        circuit_breaker,
+        circuit_breaker: cb.clone(),
         retry_client,
     });
 
@@ -65,7 +65,7 @@ async fn main() -> anyhow::Result<()> {
         start_gateway(gateway_state).await;
     });
 
-    let admin = build_admin_server(&db, &config);
+    let admin = build_admin_server(db.clone(), &config, cb);
     let admin_port = config.admin_port;
     let _admin = tokio::spawn(async move {
         let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", admin_port)).await.unwrap();
@@ -78,17 +78,21 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn build_admin_server(db: &DbPool, config: &AppConfig) -> axum::Router {
+fn build_admin_server(db: DbPool, config: &AppConfig, cb: Arc<CircuitBreaker>) -> axum::Router {
     use axum::routing::get;
 
     let auth = api::auth::router(db.clone(), config);
     let gateway_api = api::domains::router(db.clone());
+    let audit_api = api::audit::router(db.clone());
+    let metrics_api = api::metrics::router(db.clone(), cb);
     let health = Router::new().route("/health", get(|| async { "ok" }));
 
     axum::Router::new()
         .merge(health)
         .merge(auth)
         .merge(gateway_api)
+        .merge(audit_api)
+        .merge(metrics_api)
         .layer(TraceLayer::new_for_http())
 }
 
