@@ -1,0 +1,25 @@
+# Environment
+.env
+
+# Rust build artifacts
+/target/
+Cargo.lock
+
+# Database
+*.db
+*.db-wal
+*.db-shm
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Misc
+*.log
+*.bak
