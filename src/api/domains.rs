@@ -5,12 +5,18 @@ use axum::{
 };
 use rusqlite::params;
 use chrono::Utc;
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use crate::db::DbPool;
 use crate::types::{ApiResponse, Domain, Route, RouteAction};
 use crate::error::AppError;
+use crate::config::AppConfig;
 
-pub fn router(db: DbPool) -> Router {
-    let state = GatewayState { db };
+pub fn router(db: DbPool, config: &AppConfig) -> Router {
+    let state = GatewayState {
+        db,
+        cloudflare_api_token: config.cloudflare_api_token.clone(),
+        cloudflare_zone_id: config.cloudflare_zone_identifier.clone(),
+    };
     Router::new()
         .route("/api/v1/domains", get(list_domains))
         .route("/api/v1/domains", post(create_domain))
@@ -21,12 +27,202 @@ pub fn router(db: DbPool) -> Router {
         .route("/api/v1/routes", post(create_route))
         .route("/api/v1/routes/{id}", put(update_route))
         .route("/api/v1/routes/{id}", delete(delete_route))
+        .route("/api/v1/cloudflare/dns", get(list_cf_dns_records))
+        .route("/api/v1/cloudflare/dns", post(create_cf_dns_record))
+        .route("/api/v1/cloudflare/dns/{record_id}", put(update_cf_dns_record))
+        .route("/api/v1/cloudflare/dns/{record_id}", delete(delete_cf_dns_record))
         .with_state(state)
 }
 
 #[derive(Clone)]
 pub struct GatewayState {
     pub db: DbPool,
+    pub cloudflare_api_token: Option<String>,
+    pub cloudflare_zone_id: Option<String>,
+}
+
+// CloudFlare DNS types
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CfDnsRecord {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub record_type: String,
+    pub name: String,
+    pub content: String,
+    pub proxied: Option<bool>,
+    pub ttl: Option<u64>,
+    pub priority: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CfCreateDnsRecord {
+    #[serde(rename = "type")]
+    pub record_type: String,
+    pub name: String,
+    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proxied: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttl: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CfUpdateDnsRecord {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proxied: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttl: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<u64>,
+}
+
+fn cf_client(api_token: &Option<String>) -> Result<reqwest::Client, AppError> {
+    if api_token.is_none() {
+        return Err(AppError::ConfigError("CloudFlare API token not configured".into()));
+    }
+    Ok(reqwest::Client::new())
+}
+
+fn cf_headers(api_token: &str) -> http::HeaderMap {
+    let mut headers = http::HeaderMap::new();
+    headers.insert(http::header::AUTHORIZATION, format!("Bearer {}", api_token).parse().unwrap());
+    headers.insert(http::header::CONTENT_TYPE, "application/json".parse().unwrap());
+    headers
+}
+
+/// GET /api/v1/cloudflare/dns
+/// Lists DNS records from CloudFlare
+pub async fn list_cf_dns_records(
+    State(state): State<GatewayState>,
+) -> Result<Json<ApiResponse<Vec<CfDnsRecord>>>, AppError> {
+    let zone_id = state.cloudflare_zone_id.as_ref().ok_or(AppError::ConfigError("CloudFlare zone not configured".into()))?;
+    let token = state.cloudflare_api_token.as_ref().ok_or(AppError::ConfigError("CloudFlare API token not configured".into()))?;
+
+    let url = format!("https://api.cloudflare.com/client/v4/zones/{}/dns_records", zone_id);
+    let res = reqwest::Client::new()
+        .get(&url)
+        .headers(cf_headers(token))
+        .send()
+        .await
+        .map_err(|e| AppError::UpstreamError(e.to_string()))?;
+
+    let status = res.status();
+    let body: serde_json::Value = res.json().await.map_err(|e| AppError::UpstreamError(e.to_string()))?;
+
+    if !status.is_success() {
+        let msg = body["errors"].as_array().and_then(|a| a.first()).and_then(|e| e["message"].as_str()).unwrap_or("CloudFlare API error");
+        return Err(AppError::UpstreamError(msg.to_string()));
+    }
+
+    let records: Vec<CfDnsRecord> = match serde_json::from_value(body["result"].clone()) {
+        Ok(v) => v,
+        Err(_) => return Err(AppError::InternalError),
+    };
+    Ok(Json(ApiResponse::success(records)))
+}
+
+/// POST /api/v1/cloudflare/dns
+/// Creates a DNS record on CloudFlare
+pub async fn create_cf_dns_record(
+    State(state): State<GatewayState>,
+    Json(payload): Json<CfCreateDnsRecord>,
+) -> Result<Json<ApiResponse<CfDnsRecord>>, AppError> {
+    let zone_id = state.cloudflare_zone_id.as_ref().ok_or(AppError::ConfigError("CloudFlare zone not configured".into()))?;
+    let token = state.cloudflare_api_token.as_ref().ok_or(AppError::ConfigError("CloudFlare API token not configured".into()))?;
+
+    let url = format!("https://api.cloudflare.com/client/v4/zones/{}/dns_records", zone_id);
+    let res = reqwest::Client::new()
+        .post(&url)
+        .headers(cf_headers(token))
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| AppError::UpstreamError(e.to_string()))?;
+
+    let status = res.status();
+    let body: serde_json::Value = res.json().await.map_err(|e| AppError::UpstreamError(e.to_string()))?;
+
+    if !status.is_success() {
+        let msg = body["errors"].as_array().and_then(|a| a.first()).and_then(|e| e["message"].as_str()).unwrap_or("CloudFlare API error");
+        return Err(AppError::UpstreamError(msg.to_string()));
+    }
+
+    let record: CfDnsRecord = match serde_json::from_value(body["result"].clone()) {
+        Ok(v) => v,
+        Err(_) => return Err(AppError::InternalError),
+    };
+    tracing::info!(record_id = %record.id, record_type = %record.record_type, action = "cloudflare_create_dns", "audit");
+    Ok(Json(ApiResponse::success(record)))
+}
+
+/// PUT /api/v1/cloudflare/dns/{record_id}
+/// Updates a DNS record on CloudFlare
+pub async fn update_cf_dns_record(
+    State(state): State<GatewayState>,
+    axum::extract::Path(record_id): axum::extract::Path<String>,
+    Json(payload): Json<CfUpdateDnsRecord>,
+) -> Result<Json<ApiResponse<CfDnsRecord>>, AppError> {
+    let zone_id = state.cloudflare_zone_id.as_ref().ok_or(AppError::ConfigError("CloudFlare zone not configured".into()))?;
+    let token = state.cloudflare_api_token.as_ref().ok_or(AppError::ConfigError("CloudFlare API token not configured".into()))?;
+
+    let url = format!("https://api.cloudflare.com/client/v4/zones/{}/dns_records/{}", zone_id, record_id);
+    let res = reqwest::Client::new()
+        .put(&url)
+        .headers(cf_headers(token))
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| AppError::UpstreamError(e.to_string()))?;
+
+    let status = res.status();
+    let body: serde_json::Value = res.json().await.map_err(|e| AppError::UpstreamError(e.to_string()))?;
+
+    if !status.is_success() {
+        let msg = body["errors"].as_array().and_then(|a| a.first()).and_then(|e| e["message"].as_str()).unwrap_or("CloudFlare API error");
+        return Err(AppError::UpstreamError(msg.to_string()));
+    }
+
+    let record: CfDnsRecord = match serde_json::from_value(body["result"].clone()) {
+        Ok(v) => v,
+        Err(_) => return Err(AppError::InternalError),
+    };
+    tracing::info!(record_id = %record.id, action = "cloudflare_update_dns", "audit");
+    Ok(Json(ApiResponse::success(record)))
+}
+
+/// DELETE /api/v1/cloudflare/dns/{record_id}
+/// Deletes a DNS record from CloudFlare
+pub async fn delete_cf_dns_record(
+    State(state): State<GatewayState>,
+    axum::extract::Path(record_id): axum::extract::Path<String>,
+) -> Result<Json<ApiResponse<()>>, AppError> {
+    let zone_id = state.cloudflare_zone_id.as_ref().ok_or(AppError::ConfigError("CloudFlare zone not configured".into()))?;
+    let token = state.cloudflare_api_token.as_ref().ok_or(AppError::ConfigError("CloudFlare API token not configured".into()))?;
+
+    let url = format!("https://api.cloudflare.com/client/v4/zones/{}/dns_records/{}", zone_id, record_id);
+    let res = reqwest::Client::new()
+        .delete(&url)
+        .headers(cf_headers(token))
+        .send()
+        .await
+        .map_err(|e| AppError::UpstreamError(e.to_string()))?;
+
+    let status = res.status();
+    let body: serde_json::Value = res.json().await.map_err(|e| AppError::UpstreamError(e.to_string()))?;
+
+    if !status.is_success() {
+        let msg = body["errors"].as_array().and_then(|a| a.first()).and_then(|e| e["message"].as_str()).unwrap_or("CloudFlare API error");
+        return Err(AppError::UpstreamError(msg.to_string()));
+    }
+
+    tracing::info!(record_id = %record_id, action = "cloudflare_delete_dns", "audit");
+    Ok(Json(ApiResponse::ok()))
 }
 
 pub async fn list_domains(State(state): State<GatewayState>) -> Result<Json<ApiResponse<Vec<Domain>>>, AppError> {

@@ -1,0 +1,29 @@
+services:
+  bendy-web-sential:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+      - "3000:3000"
+    environment:
+      - RUST_LOG=info
+      - BWS_GATEWAY_PORT=8080
+      - BWS_ADMIN_PORT=3000
+      - BWS_DATABASE_URL=/data/bws.db
+      - BWS_JWT_SECRET=${BWS_JWT_SECRET:-changeme-use-openssl-rand-base64-32}
+      - BWS_JWT_EXPIRY_SECS=86400
+      - BWS_TOTP_AES_KEY=${BWS_TOTP_AES_KEY:-changeme-use-openssl-rand-base64-32}
+      - BWS_LOG_LEVEL=info
+    volumes:
+      - bws-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  bws-data:

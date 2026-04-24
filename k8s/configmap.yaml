@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bendy-web-sential-config
+  labels:
+    app: bendy-web-sential
+data:
+  RUST_LOG: "info"
+  BWS_DATABASE_URL: "sqlite:///data/bws.db"
+  BWS_GATEWAY_PORT: "8080"
+  BWS_ADMIN_PORT: "3000"
+  BWS_LOG_LEVEL: "info"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bendy-web-sential-env
+data:
+  # 前端配置
+  VITE_API_BASE_URL: "/api/v1"
+  VITE_APP_TITLE: "Bendy Web Sential"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: bendy-web-sential-data
+  labels:
+    app: bendy-web-sential
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: standard

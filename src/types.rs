@@ -99,6 +99,8 @@ pub struct LoginRequest {
 pub struct LoginResponse {
     pub token: String,
     pub expires_in: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jti: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

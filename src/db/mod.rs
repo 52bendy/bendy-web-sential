@@ -29,8 +29,11 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         [],
     )?;
 
-    let migrations: [(&str, &str); 1] = [
+    let migrations: [(&str, &str); 4] = [
         ("001_init", include_str!("../../migrations/001_init.sql")),
+        ("002_traffic", include_str!("../../migrations/002_traffic_metrics.sql")),
+        ("003_avatar", include_str!("../../migrations/003_user_avatar.sql")),
+        ("004_email", include_str!("../../migrations/004_email.sql")),
     ];
 
     for (version, sql) in migrations.iter() {
