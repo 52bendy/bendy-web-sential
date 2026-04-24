@@ -9,6 +9,7 @@ export interface Domain {
   id: number;
   domain: string;
   description: string | null;
+  hosting_service: string | null;
   active: boolean;
   created_at: string;
   updated_at: string;

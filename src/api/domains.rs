@@ -228,16 +228,17 @@ pub async fn delete_cf_dns_record(
 pub async fn list_domains(State(state): State<GatewayState>) -> Result<Json<ApiResponse<Vec<Domain>>>, AppError> {
     let conn = state.db.lock().map_err(|_| AppError::InternalError)?;
     let mut stmt = conn.prepare(
-        "SELECT id, domain, description, active, created_at, updated_at FROM bws_domains ORDER BY domain"
+        "SELECT id, domain, description, hosting_service, active, created_at, updated_at FROM bws_domains ORDER BY domain"
     )?;
     let rows = stmt.query_map([], |row| {
         Ok(Domain {
             id: row.get(0)?,
             domain: row.get(1)?,
             description: row.get(2)?,
-            active: row.get::<_, i32>(3)? == 1,
-            created_at: chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(4)?).unwrap().with_timezone(&Utc),
-            updated_at: chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(5)?).unwrap().with_timezone(&Utc),
+            hosting_service: row.get(3)?,
+            active: row.get::<_, i32>(4)? == 1,
+            created_at: chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(5)?).unwrap().with_timezone(&Utc),
+            updated_at: chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(6)?).unwrap().with_timezone(&Utc),
         })
     })?;
     let domains: Vec<_> = rows.filter_map(|r| r.ok()).collect();
@@ -250,12 +251,13 @@ pub async fn create_domain(
 ) -> Result<Json<ApiResponse<Domain>>, AppError> {
     let domain = payload["domain"].as_str().unwrap_or("").to_string();
     let description = payload["description"].as_str().map(|s| s.to_string());
+    let hosting_service = payload["hosting_service"].as_str().map(|s| s.to_string());
     let now = Utc::now().to_rfc3339();
 
     let conn = state.db.lock().map_err(|_| AppError::InternalError)?;
     conn.execute(
-        "INSERT INTO bws_domains (domain, description, active, created_at, updated_at) VALUES (?1, ?2, 1, ?3, ?3)",
-        params![domain, description, now],
+        "INSERT INTO bws_domains (domain, description, hosting_service, active, created_at, updated_at) VALUES (?1, ?2, ?3, 1, ?4, ?4)",
+        params![domain, description, hosting_service, now],
     )?;
     let id = conn.last_insert_rowid();
     drop(conn);
@@ -280,13 +282,14 @@ pub async fn update_domain(
 ) -> Result<Json<ApiResponse<Domain>>, AppError> {
     let domain = payload["domain"].as_str().unwrap_or("").to_string();
     let description = payload["description"].as_str().map(|s| s.to_string());
+    let hosting_service = payload["hosting_service"].as_str().map(|s| s.to_string());
     let active = payload["active"].as_i64().unwrap_or(1) == 1;
     let now = Utc::now().to_rfc3339();
 
     let conn = _state.db.lock().map_err(|_| AppError::InternalError)?;
     conn.execute(
-        "UPDATE bws_domains SET domain = ?1, description = ?2, active = ?3, updated_at = ?4 WHERE id = ?5",
-        params![domain, description, active as i32, now, id],
+        "UPDATE bws_domains SET domain = ?1, description = ?2, hosting_service = ?3, active = ?4, updated_at = ?5 WHERE id = ?6",
+        params![domain, description, hosting_service, active as i32, now, id],
     )?;
     drop(conn);
 
@@ -400,16 +403,17 @@ pub async fn delete_route(
 fn get_domain_by_id(db: &DbPool, id: i64) -> Result<Domain, AppError> {
     let conn = db.lock().map_err(|_| AppError::InternalError)?;
     let d = conn.query_row(
-        "SELECT id, domain, description, active, created_at, updated_at FROM bws_domains WHERE id = ?1",
+        "SELECT id, domain, description, hosting_service, active, created_at, updated_at FROM bws_domains WHERE id = ?1",
         params![id],
         |row| {
             Ok(Domain {
                 id: row.get(0)?,
                 domain: row.get(1)?,
                 description: row.get(2)?,
-                active: row.get::<_, i32>(3)? == 1,
-                created_at: chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(4)?).unwrap().with_timezone(&Utc),
-                updated_at: chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(5)?).unwrap().with_timezone(&Utc),
+                hosting_service: row.get(3)?,
+                active: row.get::<_, i32>(4)? == 1,
+                created_at: chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(5)?).unwrap().with_timezone(&Utc),
+                updated_at: chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(6)?).unwrap().with_timezone(&Utc),
             })
         },
     )?;

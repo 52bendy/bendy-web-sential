@@ -63,6 +63,8 @@ const zh = {
     dnsProxiedLabel: '通过 CloudFlare 代理（橙色云）',
     dnsNotConfigured: 'CloudFlare DNS 未配置。请设置 BWS_CLOUDFLARE_API_TOKEN 和 BWS_CLOUDFLARE_ZONE_ID。',
     dnsError: '更新 DNS 记录失败',
+    hostingService: '托管服务',
+    noHosting: '无',
   },
   routes: {
     title: '路由规则',
