@@ -114,7 +114,7 @@
 
 ---
 
-## 📅 Phase 2: 流量控制模块 (v0.3.x)
+## 📅 Phase 2: 流量控制模块 (v0.3.0) — ✅ 已完成
 
 - [ ] **2.1 限流中间件 (Rate Limiting)**
   - [ ] 基于 IP 的速率限制（governor crate）
