@@ -1,6 +1,6 @@
 [package]
 name = "bendy-web-sential"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [dependencies]
@@ -9,7 +9,7 @@ axum = { version = "0.8", features = ["macros"] }
 axum-extra = { version = "0.10", features = ["typed-header", "cookie"] }
 tokio = { version = "1", features = ["full"] }
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.6", features = ["trace", "cors"] }
+tower-http = { version = "0.6", features = ["trace", "cors", "fs"] }
 hyper = "1.5"
 hyper-util = { version = "0.1", features = ["tokio", "server-auto", "http1", "http2"] }
 
@@ -36,8 +36,8 @@ rusqlite = { version = "0.33", features = ["bundled"] }
 jsonwebtoken = "9"
 
 # Logging
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+tracing = "=0.1.44"
+tracing-subscriber = { version = "=0.3", features = ["json", "env-filter"] }
 
 # Security
 bcrypt = "0.16"
@@ -74,6 +74,9 @@ libc = "0.2"
 
 # URL encoding
 urlencoding = "2"
+
+# Hex encoding
+hex = "0.4"
 
 [dev-dependencies]
 tokio-test = "0.4"

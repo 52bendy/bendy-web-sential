@@ -10,10 +10,17 @@ const api = axios.create({
   },
 });
 
+// Track if we've shown the unauthorized toast to avoid duplicates
+let unauthorizedToastShown = false;
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('bws_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  // Reset toast flag on new requests (except for auth endpoints)
+  if (!config.url?.includes('/auth/')) {
+    unauthorizedToastShown = false;
   }
   return config;
 });
@@ -26,9 +33,21 @@ api.interceptors.response.use(
     const message = data?.message || error.message;
 
     if (status === 401) {
+      // Clear token but DON'T do hard redirect - let React handle it
       localStorage.removeItem('bws_token');
-      toast.error(message || 'Unauthorized');
-      window.location.href = '/login';
+
+      // Only show toast once per session and not for initial auth checks
+      const isAuthEndpoint = error.config?.url?.includes('/auth/me');
+      if (!unauthorizedToastShown && !isAuthEndpoint) {
+        toast.error(message || 'Unauthorized');
+        unauthorizedToastShown = true;
+      }
+
+      // Dispatch custom event that components can listen to
+      window.dispatchEvent(new CustomEvent('auth:unauthorized', {
+        detail: { message }
+      }));
+
       return Promise.reject(error);
     }
 

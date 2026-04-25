@@ -1,10 +1,14 @@
 import { create } from 'zustand';
+import { useEffect } from 'react';
 import type { MenuPosition } from '@/types';
+import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 
 interface AuthState {
   token: string | null;
   setToken: (token: string | null) => void;
   isAuthenticated: boolean;
+  logout: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -18,7 +22,33 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ token, isAuthenticated: !!token });
   },
   isAuthenticated: !!localStorage.getItem('bws_token'),
+  logout: () => {
+    localStorage.removeItem('bws_token');
+    set({ token: null, isAuthenticated: false });
+  },
 }));
+
+// Hook to handle auth:unauthorized events - use in App component
+export function useAuthHandler() {
+  const logout = useAuthStore((s) => s.logout);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const handleUnauthorized = (e: Event) => {
+      const customEvent = e as CustomEvent<{ message?: string }>;
+      console.log('[AuthHandler] Unauthorized event:', customEvent.detail);
+      logout();
+      // Only navigate if not already on login page
+      if (!window.location.pathname.includes('/login')) {
+        toast.error(customEvent.detail?.message || 'Session expired');
+        navigate('/login', { replace: true });
+      }
+    };
+
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
+  }, [logout, navigate]);
+}
 
 interface ThemeState {
   dark: boolean;

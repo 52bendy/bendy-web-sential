@@ -1,6 +1,80 @@
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 
+// =============================================================================
+// Auth Strategy Types
+// =============================================================================
+
+/// Authentication strategy for routes
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum AuthStrategy {
+    None,
+    Jwt,
+    ApiKey,
+}
+
+impl Default for AuthStrategy {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+impl AuthStrategy {
+    pub fn from_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "jwt" => AuthStrategy::Jwt,
+            "api_key" | "apikey" => AuthStrategy::ApiKey,
+            _ => AuthStrategy::None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AuthStrategy::None => "none",
+            AuthStrategy::Jwt => "jwt",
+            AuthStrategy::ApiKey => "api_key",
+        }
+    }
+}
+
+/// Rate limit dimension
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum RateLimitDimension {
+    Ip,
+    Key,
+    Global,
+}
+
+impl Default for RateLimitDimension {
+    fn default() -> Self {
+        Self::Ip
+    }
+}
+
+impl RateLimitDimension {
+    pub fn from_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "key" => RateLimitDimension::Key,
+            "global" => RateLimitDimension::Global,
+            _ => RateLimitDimension::Ip,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RateLimitDimension::Ip => "ip",
+            RateLimitDimension::Key => "key",
+            RateLimitDimension::Global => "global",
+        }
+    }
+}
+
+// =============================================================================
+// Domain
+// =============================================================================
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Domain {
     pub id: i64,
@@ -24,6 +98,62 @@ pub struct Route {
     pub active: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    // Auth fields
+    pub auth_strategy: AuthStrategy,
+    pub min_role: Option<String>,
+    // Rate limit fields
+    pub ratelimit_window: Option<i32>,
+    pub ratelimit_limit: Option<i32>,
+    pub ratelimit_dimension: RateLimitDimension,
+    // Health check fields
+    pub health_check_path: Option<String>,
+    pub health_check_interval_secs: i32,
+    // Transform rules (JSON string)
+    pub transform_rules: Option<String>,
+}
+
+// Extended route info for gateway matching
+#[derive(Debug, Clone)]
+pub struct RouteWithAuth {
+    pub id: i64,
+    pub action: String,
+    pub target: String,
+    pub auth_strategy: AuthStrategy,
+    pub min_role: Option<String>,
+    pub ratelimit_window: Option<i32>,
+    pub ratelimit_limit: Option<i32>,
+    pub ratelimit_dimension: RateLimitDimension,
+}
+
+// =============================================================================
+// API Key
+// =============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiKey {
+    pub id: i64,
+    pub key_hash: String,
+    pub name: String,
+    pub role: String,
+    pub active: bool,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub last_used_at: Option<DateTime<Utc>>,
+}
+
+// =============================================================================
+// Upstream (for load balancing)
+// =============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Upstream {
+    pub id: i64,
+    pub route_id: i64,
+    pub target_url: String,
+    pub weight: i32,
+    pub active: bool,
+    pub healthy: bool,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

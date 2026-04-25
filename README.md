@@ -28,7 +28,9 @@ bws_routes        — Route rules
 bws_admin_users   — Admin accounts
 bws_audit_log     — Audit trail
 bws_schema_migrations — DB migrations
-bws_token_blacklist  — Revoked tokens (Phase 4)
+bws_token_blacklist  — Revoked tokens
+bws_api_keys      — API Key credentials
+bws_upstreams     — Upstream targets (load balancing)
 ```
 
 ## Directory Structure
@@ -40,8 +42,11 @@ bendy-web-sential/
 │   ├── api/                  # Admin API handlers
 │   │   ├── auth.rs          # Login/logout/me endpoints
 │   │   ├── domains.rs       # Domain & route CRUD
+│   │   ├── keys.rs          # API Key management
 │   │   ├── metrics.rs       # System metrics
 │   │   ├── audit.rs        # Audit log
+│   │   ├── traffic.rs       # Traffic API
+│   │   ├── k8s.rs           # Kubernetes integration
 │   │   └── prometheus.rs   # Prometheus exporter
 │   ├── config/
 │   │   └── mod.rs           # AppConfig from env vars
@@ -53,6 +58,8 @@ bendy-web-sential/
 │   ├── middleware/
 │   │   ├── ratelimit.rs     # Rate limiting
 │   │   ├── circuit_breaker.rs  # Circuit breaker
+│   │   ├── auth.rs          # JWT & API Key authentication
+│   │   ├── retry.rs         # Retry logic
 │   │   └── validation.rs    # Request validation
 │   ├── security/
 │   │   ├── jwt.rs           # JWT generation/verification
@@ -70,7 +77,15 @@ bendy-web-sential/
 │   ├── ci-build.sh         # CI build pipeline
 │   └── release.sh          # Release automation
 ├── migrations/
-│   └── 001_init.sql        # Schema migrations
+│   ├── 001_init.sql        # Core schema
+│   ├── 002_traffic_metrics.sql
+│   ├── 003_user_avatar.sql
+│   ├── 004_email.sql
+│   ├── 005_hosting_service.sql
+│   └── 006_gateway_auth.sql  # Auth & upstreams
+├── docs/
+│   └── iterations/         # Iteration development records
+│       └── README.md
 ├── data/                    # SQLite database (auto-created)
 ├── Dockerfile              # Container image
 ├── docker-compose.yml       # Container orchestration
@@ -85,7 +100,7 @@ bendy-web-sential/
 
 ### Prerequisites
 
-- Rust 1.85+
+- Rust 1.95+ (edition2024 support)
 - SQLite3 development headers
 
 ### Setup
@@ -159,6 +174,42 @@ Returns authenticated user info.
 | POST | /api/v1/routes | Create route |
 | PUT | /api/v1/routes/:id | Update route |
 | DELETE | /api/v1/routes/:id | Delete route |
+
+### API Key Management
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | /api/v1/keys | List all API Keys (key value hidden) |
+| POST | /api/v1/keys | Create new API Key |
+| DELETE | /api/v1/keys/:id | Revoke API Key |
+
+#### POST /api/v1/keys
+```json
+// Request
+{"name": "production-key", "role": "user", "expires_at": "2025-12-31T23:59:59Z"}
+
+// Response
+{"code": 0, "message": "ok", "data": {
+  "id": 1,
+  "name": "production-key",
+  "key": "a1b2c3d4...",  // only returned on creation
+  "role": "user",
+  "created_at": "2026-04-24T00:00:00Z",
+  "expires_at": "2025-12-31T23:59:59Z"
+}}
+```
+
+### Route Authentication
+
+Routes support three authentication strategies configured via the `auth_strategy` field:
+
+| Strategy | Header Required | Description |
+|---|---|---|
+| `none` | None | No authentication |
+| `jwt` | `Authorization: Bearer <token>` | Validate JWT token |
+| `api_key` | `X-API-Key: <key>` | Validate API Key against `bws_api_keys` |
+
+Role-based access control uses `min_role` field with hierarchy: `superadmin > admin > user`.
 
 ## Route Actions
 
@@ -247,9 +298,20 @@ The admin API will be available at `http://localhost:8081`
 
 ## Version
 
-Current: **v0.6.0** (Phase 6 — Production Ready)
+Current: **v0.1.1** (Gateway Authentication & Authorization)
 
-See [maintain.md](maintain.md) for version history and [plan.md](plan.md) for development roadmap.
+See [docs/iterations/README.md](docs/iterations/README.md) for iteration history and [plan.md](plan.md) for development roadmap.
+
+### Development Iterations
+
+| Version | Feature | Status |
+|--------|---------|--------|
+| [0.1.1](docs/iterations/iter-0.1.1-auth.md) | 认证与鉴权 (JWT / API Key / 角色权限) | Completed |
+| 0.1.2 | 路由级限流 | Pending |
+| 0.1.3 | 负载均衡 + 健康检查 | Pending |
+| 0.1.4 | 请求/响应改写 | Pending |
+| 0.1.5 | 可观测性 | Pending |
+| 0.2.0 | 协议扩展 (WebSocket / gRPC) | Pending |
 
 ## Development
 

@@ -5,9 +5,9 @@ use axum::{
 };
 use rusqlite::params;
 use chrono::Utc;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize};
 use crate::db::DbPool;
-use crate::types::{ApiResponse, Domain, Route, RouteAction};
+use crate::types::{ApiResponse, Domain, Route, RouteAction, AuthStrategy, RateLimitDimension};
 use crate::error::AppError;
 use crate::config::AppConfig;
 
@@ -312,7 +312,10 @@ pub async fn delete_domain(
 pub async fn list_routes(State(state): State<GatewayState>) -> Result<Json<ApiResponse<Vec<Route>>>, AppError> {
     let conn = state.db.lock().map_err(|_| AppError::InternalError)?;
     let mut stmt = conn.prepare(
-        "SELECT id, domain_id, path_pattern, action, target, description, priority, active, created_at, updated_at FROM bws_routes ORDER BY domain_id, priority DESC"
+        "SELECT id, domain_id, path_pattern, action, target, description, priority, active, created_at, updated_at,
+                auth_strategy, min_role, ratelimit_window, ratelimit_limit, ratelimit_dimension,
+                health_check_path, health_check_interval_secs, transform_rules
+         FROM bws_routes ORDER BY domain_id, priority DESC"
     )?;
     let rows = stmt.query_map([], |row| {
         let action_str: String = row.get(3)?;
@@ -321,6 +324,9 @@ pub async fn list_routes(State(state): State<GatewayState>) -> Result<Json<ApiRe
             "static" => RouteAction::Static,
             _ => RouteAction::Proxy,
         };
+        let auth_strategy_str: String = row.get::<_, Option<String>>(10)?.unwrap_or_else(|| "none".into());
+        let ratelimit_dimension_str: String = row.get::<_, Option<String>>(14)?.unwrap_or_else(|| "ip".into());
+
         Ok(Route {
             id: row.get(0)?,
             domain_id: row.get(1)?,
@@ -332,6 +338,18 @@ pub async fn list_routes(State(state): State<GatewayState>) -> Result<Json<ApiRe
             active: row.get::<_, i32>(7)? == 1,
             created_at: chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(8)?).unwrap().with_timezone(&Utc),
             updated_at: chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(9)?).unwrap().with_timezone(&Utc),
+            // Auth fields
+            auth_strategy: AuthStrategy::from_str(&auth_strategy_str),
+            min_role: row.get(11)?,
+            // Rate limit fields
+            ratelimit_window: row.get(12)?,
+            ratelimit_limit: row.get(13)?,
+            ratelimit_dimension: RateLimitDimension::from_str(&ratelimit_dimension_str),
+            // Health check fields
+            health_check_path: row.get(15)?,
+            health_check_interval_secs: row.get::<_, Option<i32>>(16)?.unwrap_or(30),
+            // Transform rules
+            transform_rules: row.get(17)?,
         })
     })?;
     let routes: Vec<_> = rows.filter_map(|r| r.ok()).collect();
@@ -348,13 +366,28 @@ pub async fn create_route(
     let target = payload["target"].as_str().unwrap_or("").to_string();
     let description = payload["description"].as_str().map(|s| s.to_string());
     let priority = payload["priority"].as_i64().unwrap_or(0) as i32;
+
+    // New auth/rate-limit fields
+    let auth_strategy = payload["auth_strategy"].as_str().unwrap_or("none").to_string();
+    let min_role = payload["min_role"].as_str().map(|s| s.to_string());
+    let ratelimit_window = payload["ratelimit_window"].as_i64().map(|v| v as i32);
+    let ratelimit_limit = payload["ratelimit_limit"].as_i64().map(|v| v as i32);
+    let ratelimit_dimension = payload["ratelimit_dimension"].as_str().unwrap_or("ip").to_string();
+    let health_check_path = payload["health_check_path"].as_str().map(|s| s.to_string());
+    let health_check_interval_secs = payload["health_check_interval_secs"].as_i64().unwrap_or(30) as i32;
+    let transform_rules = payload["transform_rules"].as_str().map(|s| s.to_string());
+
     let now = Utc::now().to_rfc3339();
 
     let conn = state.db.lock().map_err(|_| AppError::InternalError)?;
     conn.execute(
-        "INSERT INTO bws_routes (domain_id, path_pattern, action, target, description, priority, active, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?7)",
-        params![domain_id, path_pattern, action, target, description, priority, now],
+        "INSERT INTO bws_routes (domain_id, path_pattern, action, target, description, priority, active, created_at, updated_at,
+                               auth_strategy, min_role, ratelimit_window, ratelimit_limit, ratelimit_dimension,
+                               health_check_path, health_check_interval_secs, transform_rules)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+        params![domain_id, path_pattern, action, target, description, priority, now,
+               auth_strategy, min_role, ratelimit_window, ratelimit_limit, ratelimit_dimension,
+               health_check_path, health_check_interval_secs, transform_rules],
     )?;
     let id = conn.last_insert_rowid();
     drop(conn);
@@ -375,12 +408,28 @@ pub async fn update_route(
     let description = payload["description"].as_str().map(|s| s.to_string());
     let priority = payload["priority"].as_i64().unwrap_or(0) as i32;
     let active = payload["active"].as_i64().unwrap_or(1) == 1;
+
+    // New auth/rate-limit fields
+    let auth_strategy = payload["auth_strategy"].as_str().unwrap_or("none").to_string();
+    let min_role = payload["min_role"].as_str().map(|s| s.to_string());
+    let ratelimit_window = payload["ratelimit_window"].as_i64().map(|v| v as i32);
+    let ratelimit_limit = payload["ratelimit_limit"].as_i64().map(|v| v as i32);
+    let ratelimit_dimension = payload["ratelimit_dimension"].as_str().unwrap_or("ip").to_string();
+    let health_check_path = payload["health_check_path"].as_str().map(|s| s.to_string());
+    let health_check_interval_secs = payload["health_check_interval_secs"].as_i64().map(|v| v as i32);
+    let transform_rules = payload["transform_rules"].as_str().map(|s| s.to_string());
+
     let now = Utc::now().to_rfc3339();
 
     let conn = _state.db.lock().map_err(|_| AppError::InternalError)?;
     conn.execute(
-        "UPDATE bws_routes SET path_pattern = ?1, action = ?2, target = ?3, description = ?4, priority = ?5, active = ?6, updated_at = ?7 WHERE id = ?8",
-        params![path_pattern, action, target, description, priority, active as i32, now, id],
+        "UPDATE bws_routes SET path_pattern = ?1, action = ?2, target = ?3, description = ?4, priority = ?5, active = ?6, updated_at = ?7,
+                              auth_strategy = ?8, min_role = ?9, ratelimit_window = ?10, ratelimit_limit = ?11, ratelimit_dimension = ?12,
+                              health_check_path = ?13, health_check_interval_secs = ?14, transform_rules = ?15
+         WHERE id = ?16",
+        params![path_pattern, action, target, description, priority, active as i32, now, id,
+               auth_strategy, min_role, ratelimit_window, ratelimit_limit, ratelimit_dimension,
+               health_check_path, health_check_interval_secs, transform_rules],
     )?;
     drop(conn);
 
@@ -423,7 +472,10 @@ fn get_domain_by_id(db: &DbPool, id: i64) -> Result<Domain, AppError> {
 fn get_route_by_id(db: &DbPool, id: i64) -> Result<Route, AppError> {
     let conn = db.lock().map_err(|_| AppError::InternalError)?;
     let r = conn.query_row(
-        "SELECT id, domain_id, path_pattern, action, target, description, priority, active, created_at, updated_at FROM bws_routes WHERE id = ?1",
+        "SELECT id, domain_id, path_pattern, action, target, description, priority, active, created_at, updated_at,
+                auth_strategy, min_role, ratelimit_window, ratelimit_limit, ratelimit_dimension,
+                health_check_path, health_check_interval_secs, transform_rules
+         FROM bws_routes WHERE id = ?1",
         params![id],
         |row| {
             let action_str: String = row.get(3)?;
@@ -432,6 +484,9 @@ fn get_route_by_id(db: &DbPool, id: i64) -> Result<Route, AppError> {
                 "static" => RouteAction::Static,
                 _ => RouteAction::Proxy,
             };
+            let auth_strategy_str: String = row.get::<_, Option<String>>(10)?.unwrap_or_else(|| "none".into());
+            let ratelimit_dimension_str: String = row.get::<_, Option<String>>(14)?.unwrap_or_else(|| "ip".into());
+
             Ok(Route {
                 id: row.get(0)?,
                 domain_id: row.get(1)?,
@@ -443,6 +498,18 @@ fn get_route_by_id(db: &DbPool, id: i64) -> Result<Route, AppError> {
                 active: row.get::<_, i32>(7)? == 1,
                 created_at: chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(8)?).unwrap().with_timezone(&Utc),
                 updated_at: chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(9)?).unwrap().with_timezone(&Utc),
+                // Auth fields
+                auth_strategy: AuthStrategy::from_str(&auth_strategy_str),
+                min_role: row.get(11)?,
+                // Rate limit fields
+                ratelimit_window: row.get(12)?,
+                ratelimit_limit: row.get(13)?,
+                ratelimit_dimension: RateLimitDimension::from_str(&ratelimit_dimension_str),
+                // Health check fields
+                health_check_path: row.get(15)?,
+                health_check_interval_secs: row.get::<_, Option<i32>>(16)?.unwrap_or(30),
+                // Transform rules
+                transform_rules: row.get(17)?,
             })
         },
     )?;
