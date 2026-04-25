@@ -1,11 +1,12 @@
 use axum::{
-    extract::Request,
     middleware::Next,
     response::Response,
+    body::Body,
 };
+use http::Request;
 use std::time::Instant;
 
-pub async fn request_log(req: Request, next: Next) -> Response {
+pub async fn request_log(req: Request<Body>, next: Next<Body>) -> Response {
     let start = Instant::now();
     let method = req.method().to_string();
     let path = req.uri().path().to_string();

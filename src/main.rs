@@ -9,12 +9,13 @@ mod types;
 
 use std::sync::Arc;
 use axum::Router;
-use tower_http::trace::TraceLayer;
+use tower_http::{trace::TraceLayer, services::ServeDir};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use crate::config::AppConfig;
 use crate::db::DbPool;
 use crate::gateway::proxy::{AppState, start_gateway};
+use crate::gateway::cache::Caches;
 use crate::error::AppError;
 use crate::middleware::ratelimit::RateLimiters;
 use crate::middleware::circuit_breaker::CircuitBreaker;
@@ -56,6 +57,7 @@ async fn main() -> anyhow::Result<()> {
     let blacklist = Arc::new(TokenBlacklist::new());
     let metrics = PrometheusMetrics::new();
     let jwt = JwtServiceClone::new(config.jwt_secret.clone(), config.jwt_expiry_secs);
+    let caches = Caches::new();
 
     let state = AppState {
         db: db.clone(),
@@ -64,6 +66,7 @@ async fn main() -> anyhow::Result<()> {
         circuit_breaker: cb.clone(),
         retry_client,
         jwt: jwt.clone(),
+        caches: caches.clone(),
     };
 
     let gateway_state = state.clone();
@@ -71,12 +74,22 @@ async fn main() -> anyhow::Result<()> {
         start_gateway(gateway_state).await;
     });
 
+    let db_for_health = db.clone();
+    let _health = tokio::spawn(async move {
+        use crate::gateway::health_check::start_health_checker;
+        start_health_checker(db_for_health, 30).await;
+    });
+
     let admin = build_admin_server(db.clone(), &config, cb, blacklist, metrics);
     let admin_port = config.admin_port;
     let _admin = tokio::spawn(async move {
         let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", admin_port)).await.unwrap();
+        let incoming = hyper::server::conn::AddrIncoming::from_listener(listener).unwrap();
         tracing::info!(port = %admin_port, "admin API listening");
-        axum::serve(listener, admin).await.unwrap();
+        hyper::server::Builder::new(incoming, hyper::server::conn::Http::new())
+            .serve(admin.into_make_service())
+            .await
+            .unwrap();
     });
 
     tokio::signal::ctrl_c().await?;
@@ -92,7 +105,6 @@ fn build_admin_server(
     prometheus_metrics: PrometheusMetrics,
 ) -> axum::Router {
     use axum::routing::get;
-    use tower_http::services::ServeDir;
 
     let auth = api::auth::router(db.clone(), config, blacklist);
     let gateway_api = api::domains::router(db.clone(), config);
@@ -102,22 +114,30 @@ fn build_admin_server(
     let prom = prometheus_router(prometheus_metrics);
     let traffic_api = api::traffic::router(db.clone());
     let k8s_api = api::k8s::router(db.clone(), cb.clone());
+    let upstreams_api = api::upstreams::router(db.clone(), config);
+    let rewrite_api = api::rewrite::router(db.clone());
     let health = Router::new().route("/health", get(|| async { "ok" }));
 
-    let frontend = ServeDir::new("frontend/dist")
-        .fallback(tower_http::services::ServeFile::new("frontend/dist/index.html"));
+    // Static files for frontend (serve from frontend/dist)
+    let static_files = Router::new().nest_service("/", ServeDir::new("frontend/dist"));
 
-    axum::Router::new()
-        .merge(health)
+    // API routes group
+    let api_router = axum::Router::new()
         .merge(auth)
-        .merge(gateway_api)
         .merge(keys_api)
+        .merge(gateway_api)
         .merge(audit_api)
         .merge(metrics_api)
         .merge(prom)
         .merge(traffic_api)
         .merge(k8s_api)
-        .fallback_service(frontend)
+        .merge(upstreams_api)
+        .merge(rewrite_api);
+
+    axum::Router::new()
+        .merge(health)
+        .merge(api_router)
+        .merge(static_files)
         .layer(TraceLayer::new_for_http())
 }
 

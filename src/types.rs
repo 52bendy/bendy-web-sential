@@ -156,6 +156,17 @@ pub struct Upstream {
     pub created_at: DateTime<Utc>,
 }
 
+// Rewrite rules
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RewriteRule {
+    pub id: i64,
+    pub name: String,
+    pub rule_type: String,
+    pub pattern: String,
+    pub replacement: String,
+    pub enabled: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum RouteAction {

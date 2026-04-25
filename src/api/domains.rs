@@ -20,17 +20,18 @@ pub fn router(db: DbPool, config: &AppConfig) -> Router {
     Router::new()
         .route("/api/v1/domains", get(list_domains))
         .route("/api/v1/domains", post(create_domain))
-        .route("/api/v1/domains/{id}", get(get_domain))
-        .route("/api/v1/domains/{id}", put(update_domain))
-        .route("/api/v1/domains/{id}", delete(delete_domain))
+        .route("/api/v1/domains/:id", get(get_domain))
+        .route("/api/v1/domains/:id", put(update_domain))
+        .route("/api/v1/domains/:id", delete(delete_domain))
         .route("/api/v1/routes", get(list_routes))
         .route("/api/v1/routes", post(create_route))
-        .route("/api/v1/routes/{id}", put(update_route))
-        .route("/api/v1/routes/{id}", delete(delete_route))
+        .route("/api/v1/routes/:id", get(get_route))
+        .route("/api/v1/routes/:id", put(update_route))
+        .route("/api/v1/routes/:id", delete(delete_route))
         .route("/api/v1/cloudflare/dns", get(list_cf_dns_records))
         .route("/api/v1/cloudflare/dns", post(create_cf_dns_record))
-        .route("/api/v1/cloudflare/dns/{record_id}", put(update_cf_dns_record))
-        .route("/api/v1/cloudflare/dns/{record_id}", delete(delete_cf_dns_record))
+        .route("/api/v1/cloudflare/dns/:record_id", put(update_cf_dns_record))
+        .route("/api/v1/cloudflare/dns/:record_id", delete(delete_cf_dns_record))
         .with_state(state)
 }
 
@@ -280,10 +281,12 @@ pub async fn update_domain(
     axum::extract::Path(id): axum::extract::Path<i64>,
     Json(payload): Json<serde_json::Value>,
 ) -> Result<Json<ApiResponse<Domain>>, AppError> {
-    let domain = payload["domain"].as_str().unwrap_or("").to_string();
-    let description = payload["description"].as_str().map(|s| s.to_string());
-    let hosting_service = payload["hosting_service"].as_str().map(|s| s.to_string());
-    let active = payload["active"].as_i64().unwrap_or(1) == 1;
+    let current = get_domain_by_id(&_state.db, id)?;
+
+    let domain = payload["domain"].as_str().map(|s| s.to_string()).unwrap_or(current.domain);
+    let description = payload["description"].as_str().map(|s| s.to_string()).or(current.description);
+    let hosting_service = payload["hosting_service"].as_str().map(|s| s.to_string()).or(current.hosting_service);
+    let active = payload["active"].as_bool().unwrap_or(current.active);
     let now = Utc::now().to_rfc3339();
 
     let conn = _state.db.lock().map_err(|_| AppError::InternalError)?;
@@ -402,22 +405,30 @@ pub async fn update_route(
     axum::extract::Path(id): axum::extract::Path<i64>,
     Json(payload): Json<serde_json::Value>,
 ) -> Result<Json<ApiResponse<Route>>, AppError> {
-    let path_pattern = payload["path_pattern"].as_str().unwrap_or("").to_string();
-    let action = payload["action"].as_str().unwrap_or("proxy").to_string();
-    let target = payload["target"].as_str().unwrap_or("").to_string();
-    let description = payload["description"].as_str().map(|s| s.to_string());
-    let priority = payload["priority"].as_i64().unwrap_or(0) as i32;
-    let active = payload["active"].as_i64().unwrap_or(1) == 1;
+    let current = get_route_by_id(&_state.db, id)?;
+
+    let path_pattern = payload["path_pattern"].as_str().map(|s| s.to_string()).unwrap_or(current.path_pattern);
+    let action = payload["action"].as_str().map(|s| s.to_string()).unwrap_or_else(|| {
+        match current.action {
+            RouteAction::Proxy => "proxy".into(),
+            RouteAction::Redirect => "redirect".into(),
+            RouteAction::Static => "static".into(),
+        }
+    });
+    let target = payload["target"].as_str().map(|s| s.to_string()).unwrap_or(current.target);
+    let description = payload["description"].as_str().map(|s| s.to_string()).or(current.description);
+    let priority = payload["priority"].as_i64().map(|v| v as i32).unwrap_or(current.priority);
+    let active = payload["active"].as_bool().unwrap_or(current.active);
 
     // New auth/rate-limit fields
-    let auth_strategy = payload["auth_strategy"].as_str().unwrap_or("none").to_string();
-    let min_role = payload["min_role"].as_str().map(|s| s.to_string());
-    let ratelimit_window = payload["ratelimit_window"].as_i64().map(|v| v as i32);
-    let ratelimit_limit = payload["ratelimit_limit"].as_i64().map(|v| v as i32);
-    let ratelimit_dimension = payload["ratelimit_dimension"].as_str().unwrap_or("ip").to_string();
-    let health_check_path = payload["health_check_path"].as_str().map(|s| s.to_string());
-    let health_check_interval_secs = payload["health_check_interval_secs"].as_i64().map(|v| v as i32);
-    let transform_rules = payload["transform_rules"].as_str().map(|s| s.to_string());
+    let auth_strategy = payload["auth_strategy"].as_str().map(|s| s.to_string()).unwrap_or_else(|| current.auth_strategy.as_str().into());
+    let min_role = payload["min_role"].as_str().map(|s| s.to_string()).or(current.min_role);
+    let ratelimit_window = payload["ratelimit_window"].as_i64().map(|v| v as i32).or(current.ratelimit_window);
+    let ratelimit_limit = payload["ratelimit_limit"].as_i64().map(|v| v as i32).or(current.ratelimit_limit);
+    let ratelimit_dimension = payload["ratelimit_dimension"].as_str().map(|s| s.to_string()).unwrap_or_else(|| current.ratelimit_dimension.as_str().into());
+    let health_check_path = payload["health_check_path"].as_str().map(|s| s.to_string()).or(current.health_check_path);
+    let health_check_interval_secs = payload["health_check_interval_secs"].as_i64().map(|v| v as i32).unwrap_or(current.health_check_interval_secs);
+    let transform_rules = payload["transform_rules"].as_str().map(|s| s.to_string()).or(current.transform_rules);
 
     let now = Utc::now().to_rfc3339();
 
@@ -427,14 +438,22 @@ pub async fn update_route(
                               auth_strategy = ?8, min_role = ?9, ratelimit_window = ?10, ratelimit_limit = ?11, ratelimit_dimension = ?12,
                               health_check_path = ?13, health_check_interval_secs = ?14, transform_rules = ?15
          WHERE id = ?16",
-        params![path_pattern, action, target, description, priority, active as i32, now, id,
+        params![path_pattern, action, target, description, priority, active as i32, now,
                auth_strategy, min_role, ratelimit_window, ratelimit_limit, ratelimit_dimension,
-               health_check_path, health_check_interval_secs, transform_rules],
+               health_check_path, health_check_interval_secs, transform_rules, id],
     )?;
     drop(conn);
 
     let route = get_route_by_id(&_state.db, id)?;
     tracing::info!(id = %id, action = "update_route", "audit");
+    Ok(Json(ApiResponse::success(route)))
+}
+
+pub async fn get_route(
+    State(_state): State<GatewayState>,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+) -> Result<Json<ApiResponse<Route>>, AppError> {
+    let route = get_route_by_id(&_state.db, id)?;
     Ok(Json(ApiResponse::success(route)))
 }
 

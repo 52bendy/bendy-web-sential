@@ -6,6 +6,7 @@ import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import Domains from '@/pages/Domains';
 import RoutesPage from '@/pages/Routes';
+import Rewrites from '@/pages/Rewrites';
 import AuditLog from '@/pages/AuditLog';
 import Settings from '@/pages/Settings';
 import RouteTest from '@/pages/RouteTest';
@@ -139,6 +140,7 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="domains" element={<Domains />} />
             <Route path="routes" element={<RoutesPage />} />
+            <Route path="rewrites" element={<Rewrites />} />
             <Route path="audit-log" element={<AuditLog />} />
             <Route path="routes/test/:id" element={<RouteTest />} />
             <Route path="settings" element={<Settings />} />

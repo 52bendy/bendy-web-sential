@@ -5,6 +5,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use sysinfo;
 
 use crate::db::DbPool;
 use crate::types::ApiResponse;
@@ -123,7 +124,7 @@ fn get_system_metrics() -> Result<(u64, u64, f64), AppError> {
 
     let memory_usage = sys.used_memory();
     let memory_total = sys.total_memory();
-    let cpu_usage = sys.global_cpu_usage() as f64;
+    let cpu_usage = sys.global_cpu_info().cpu_usage() as f64;
 
     Ok((memory_usage, memory_total, cpu_usage))
 }
@@ -134,7 +135,7 @@ fn get_uptime_seconds() -> u64 {
     let pid = unsafe { libc::getpid() };
     let pid = sysinfo::Pid::from_u32(pid as u32);
     let mut sys = sysinfo::System::new_all();
-    sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+    sys.refresh_processes();
 
     sys.process(pid)
         .map(|p| p.run_time())

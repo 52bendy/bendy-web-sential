@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::net::IpAddr;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use axum::{
     extract::State,
@@ -10,15 +11,17 @@ use axum::{
 };
 use tower_http::trace::TraceLayer;
 use axum::extract::FromRef;
+use rusqlite::params;
 
 use crate::config::AppConfig;
 use crate::db::DbPool;
+use crate::gateway::cache::Caches;
 use crate::middleware::ratelimit::RateLimiters;
 use crate::middleware::circuit_breaker::CircuitBreaker;
 use crate::middleware::retry::RetryClient;
 use crate::middleware::auth::{check_route_auth, extract_api_key, extract_bearer_token};
 use crate::security::JwtServiceClone;
-use crate::types::{RouteWithAuth, RateLimitDimension, AuthStrategy};
+use crate::types::{RouteWithAuth, RateLimitDimension, AuthStrategy, Upstream};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -28,6 +31,56 @@ pub struct AppState {
     pub circuit_breaker: Arc<CircuitBreaker>,
     pub retry_client: Arc<RetryClient>,
     pub jwt: JwtServiceClone,
+    pub caches: Caches,
+}
+
+/// Per-route load balancer state
+pub struct RouteLoadBalancer {
+    counter: AtomicU64,
+    upstreams: Vec<Upstream>,
+}
+
+impl RouteLoadBalancer {
+    pub fn new(upstreams: Vec<Upstream>) -> Self {
+        Self {
+            counter: AtomicU64::new(0),
+            upstreams,
+        }
+    }
+
+    /// Get next upstream using weighted round-robin
+    pub fn next(&self) -> Option<&Upstream> {
+        if self.upstreams.is_empty() {
+            return None;
+        }
+
+        // Filter to healthy and active upstreams
+        let candidates: Vec<&Upstream> = self.upstreams.iter()
+            .filter(|u| u.active && u.healthy)
+            .collect();
+
+        if candidates.is_empty() {
+            return None;
+        }
+
+        // Weighted round-robin
+        let total_weight: u64 = candidates.iter().map(|u| u.weight as u64).sum();
+        if total_weight == 0 {
+            return Some(candidates[0]);
+        }
+
+        let idx = (self.counter.fetch_add(1, Ordering::Relaxed) % total_weight) as usize;
+        let mut cumulative = 0;
+
+        for upstream in &candidates {
+            cumulative += upstream.weight as u64;
+            if cumulative > idx as u64 {
+                return Some(*upstream);
+            }
+        }
+
+        Some(candidates[0])
+    }
 }
 
 // Implement FromRef for AppState to Arc<AppState>
@@ -56,8 +109,12 @@ pub async fn start_gateway(state: AppState) {
         .with_state(state)
         .layer(TraceLayer::new_for_http());
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await.unwrap();
+    let incoming = hyper::server::conn::AddrIncoming::from_listener(listener).unwrap();
     tracing::info!(port = %port, "gateway listening");
-    axum::serve(listener, app).await.unwrap();
+    hyper::server::Builder::new(incoming, hyper::server::conn::Http::new())
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
 }
 
 fn extract_ip(req: &Request<Body>) -> IpAddr {
@@ -129,18 +186,40 @@ async fn proxy_handler(
         match route.action.as_str() {
             "proxy" => {
                 let uri_path = req.uri().path_and_query().map(|pq| pq.to_string()).unwrap_or_else(|| "/".to_string());
-                let url = format!("{}{}", route.target.trim_end_matches('/'), uri_path);
 
-                let headers = req.headers().clone();
+                // Check for upstreams (load balancing)
+                let upstreams = get_route_upstreams(&state.db, route.id).await;
+                let target_url = if upstreams.is_empty() {
+                    // No upstreams, use route target as fallback
+                    format!("{}{}", route.target.trim_end_matches('/'), uri_path)
+                } else {
+                    // Use load balancer to select upstream
+                    let lb = RouteLoadBalancer::new(upstreams);
+                    match lb.next() {
+                        Some(upstream) => {
+                            tracing::debug!(upstream_id = %upstream.id, target = %upstream.target_url, "selected upstream for load balancing");
+                            format!("{}{}", upstream.target_url.trim_end_matches('/'), uri_path)
+                        }
+                        None => {
+                            tracing::warn!("no healthy upstreams available for route {}", route.id);
+                            return (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"code": 4004, "message": "no healthy upstream available", "data": null}))).into_response();
+                        }
+                    }
+                };
+
+                // Apply rewrite rules to headers (using cache)
+                let mut headers = req.headers().clone();
+                apply_rewrite_rules(&state.db, &state.caches.rewrite_rules, &mut headers);
+
                 let method = req.method().clone();
-                tracing::debug!(url = %url, method = ?method, "proxying request");
+                tracing::debug!(url = %target_url, method = ?method, "proxying request");
 
                 if !state.circuit_breaker.try_acquire().await {
                     tracing::warn!("circuit breaker rejected request");
                     return crate::error::AppError::CircuitBreakerOpen.into_response();
                 }
 
-                let resp = state.retry_client.request(method, &url, &headers).await;
+                let resp = state.retry_client.request(method, &target_url, &headers).await;
 
                 match resp {
                     Ok(resp) => {
@@ -271,4 +350,85 @@ async fn check_route_ratelimit(
     }
 
     None
+}
+
+/// Fetch upstreams for a route from database
+async fn get_route_upstreams(db: &DbPool, route_id: i64) -> Vec<Upstream> {
+    let conn = match db.lock() { Ok(c) => c, Err(_) => return vec![] };
+
+    let mut stmt = match conn.prepare(
+        "SELECT id, route_id, target_url, weight, active, healthy, created_at
+         FROM bws_upstreams WHERE route_id = ?1 ORDER BY id"
+    ) {
+        Ok(s) => s,
+        Err(_) => return vec![],
+    };
+
+    stmt.query_map(params![route_id], |row| {
+        use chrono::Utc;
+        Ok(Upstream {
+            id: row.get(0)?,
+            route_id: row.get(1)?,
+            target_url: row.get(2)?,
+            weight: row.get(3)?,
+            active: row.get::<_, i32>(4)? != 0,
+            healthy: row.get::<_, i32>(5)? != 0,
+            created_at: row.get::<_, String>(6)?
+                .parse()
+                .unwrap_or_else(|_| Utc::now()),
+        })
+    }).ok()
+    .map(|rows| rows.filter_map(|r| r.ok()).collect())
+    .unwrap_or_default()
+}
+
+/// Apply rewrite rules to request headers (cached)
+fn apply_rewrite_rules(db: &DbPool, cache: &crate::gateway::cache::RewriteRulesCache, headers: &mut hyper::HeaderMap) {
+    let rules = cache.get().or_else(|| {
+        let conn = match db.lock() { Ok(c) => c, Err(_) => return None };
+
+        let mut stmt = match conn.prepare(
+            "SELECT rule_type, pattern, replacement FROM bws_rewrite_rules WHERE enabled = 1"
+        ) {
+            Ok(s) => s,
+            Err(_) => return None,
+        };
+
+        let rules: Vec<(String, String, String)> = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+        }).ok()
+        .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        .unwrap_or_default();
+
+        Some(rules)
+    });
+
+    let Some(rules) = rules else { return };
+    cache.update(rules.clone());
+
+    for (rule_type, pattern, replacement) in rules {
+        match rule_type.as_str() {
+            "header_add" | "header_replace" => {
+                if let (Ok(name), Ok(value)) = (
+                    pattern.parse::<hyper::header::HeaderName>(),
+                    replacement.parse::<hyper::header::HeaderValue>()
+                ) {
+                    headers.insert(name, value);
+                    tracing::debug!(header = %pattern, value = %replacement, "applied header rewrite");
+                }
+            }
+            "header_remove" => {
+                if let Ok(name) = pattern.parse::<hyper::header::HeaderName>() {
+                    headers.remove(&name);
+                    tracing::debug!(header = %pattern, "removed header");
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Invalidate rewrite rules cache (call after API writes)
+pub fn invalidate_rewrite_cache(caches: &Caches) {
+    caches.rewrite_rules.invalidate();
 }

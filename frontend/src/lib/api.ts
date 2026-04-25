@@ -67,3 +67,21 @@ api.interceptors.response.use(
 );
 
 export default api;
+
+// Rewrite rules API
+import type { RewriteRule, CreateRewriteRule } from '@/types';
+
+export async function getRewrites(): Promise<RewriteRule[]> {
+  const response = await api.get<ApiResponse<RewriteRule[]>>('/rewrites');
+  return response.data.data || [];
+}
+
+export async function createRewrite(data: CreateRewriteRule): Promise<RewriteRule> {
+  const response = await api.post<ApiResponse<RewriteRule>>('/rewrites', data);
+  if (!response.data.data) throw new Error('Failed to create rewrite rule');
+  return response.data.data;
+}
+
+export async function deleteRewrite(id: number): Promise<void> {
+  await api.delete(`/rewrites/${id}`);
+}

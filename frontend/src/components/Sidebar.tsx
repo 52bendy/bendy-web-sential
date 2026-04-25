@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Globe,
   Route,
+  RefreshCw,
   ScrollText,
   Settings,
   ChevronLeft,
@@ -18,6 +19,7 @@ const navItems = [
   { path: '/', label: 'nav.dashboard', icon: LayoutDashboard },
   { path: '/domains', label: 'nav.domains', icon: Globe },
   { path: '/routes', label: 'nav.routes', icon: Route },
+  { path: '/rewrites', label: 'nav.rewrites', icon: RefreshCw },
   { path: '/audit-log', label: 'nav.auditLog', icon: ScrollText },
   { path: '/settings', label: 'nav.settings', icon: Settings },
 ];

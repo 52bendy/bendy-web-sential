@@ -5,4 +5,6 @@ pub mod keys;
 pub mod k8s;
 pub mod metrics;
 pub mod prometheus;
+pub mod rewrite;
 pub mod traffic;
+pub mod upstreams;
