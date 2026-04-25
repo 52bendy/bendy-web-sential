@@ -29,6 +29,8 @@ pub enum AppError {
     AlreadyExists,
     #[error("Invalid parameter")]
     InvalidParam,
+    #[error("Bad request: {0}")]
+    BadRequest(String),
     #[error("Internal server error")]
     InternalError,
     #[error("Database error: {0}")]
@@ -50,7 +52,7 @@ impl IntoResponse for AppError {
             AppError::RateLimited | AppError::CircuitBreakerOpen => StatusCode::TOO_MANY_REQUESTS,
             AppError::NotFound => StatusCode::NOT_FOUND,
             AppError::AlreadyExists => StatusCode::CONFLICT,
-            AppError::InvalidParam => StatusCode::BAD_REQUEST,
+            AppError::InvalidParam | AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
 
@@ -76,6 +78,7 @@ impl AppError {
             AppError::NotFound => 3001,
             AppError::AlreadyExists => 3002,
             AppError::InvalidParam => 1005,
+            AppError::BadRequest(_) => 1006,
             AppError::InternalError => 4001,
             AppError::DatabaseError(_) => 4002,
             AppError::ConfigError(_) => 4003,

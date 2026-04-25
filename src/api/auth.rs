@@ -4,41 +4,39 @@ use axum::{
     Router,
     Json,
     body::Body,
-    http::Request,
-    http::header::AUTHORIZATION,
-    http::request::Parts,
 };
+use http::{Request, header::AUTHORIZATION};
+use http::request::Parts;
 use serde::Deserialize;
 use std::sync::Arc;
 
 // Custom extractor that gets auth token from headers without consuming body
 pub struct AuthToken(pub String);
 
+#[axum::async_trait]
 impl<S> axum::extract::FromRequestParts<S> for AuthToken
 where
-    S: Send + Sync,
+    S: 'static,
 {
     type Rejection = AppError;
 
-    fn from_request_parts(
+    async fn from_request_parts(
         parts: &mut Parts,
         _state: &S,
-    ) -> impl std::future::Future<Output = Result<Self, Self::Rejection>> + Send {
-        async move {
-            let auth_header = parts
-                .headers
-                .get(AUTHORIZATION)
-                .and_then(|v| v.to_str().ok())
-                .ok_or(AppError::AuthRequired)?;
+    ) -> Result<Self, Self::Rejection> {
+        let auth_header = parts
+            .headers
+            .get(AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .ok_or(AppError::AuthRequired)?;
 
-            let token = auth_header
-                .strip_prefix("Bearer ")
-                .unwrap_or(auth_header)
-                .trim()
-                .to_owned();
+        let token = auth_header
+            .strip_prefix("Bearer ")
+            .unwrap_or(auth_header)
+            .trim()
+            .to_owned();
 
-            Ok(AuthToken(token))
-        }
+        Ok(AuthToken(token))
     }
 }
 use crate::config::AppConfig;
@@ -100,8 +98,8 @@ fn extract_bearer_token(req: &Request<Body>) -> Option<String> {
         .into()
 }
 
-fn authenticated_username(req: &http::request::Parts, jwt: &JwtServiceClone) -> Result<String, AppError> {
-    let token = extract_bearer_token(&Request::from_parts(req.clone(), Body::default())).ok_or(AppError::AuthRequired)?;
+fn authenticated_username(req: http::request::Parts, jwt: &JwtServiceClone) -> Result<String, AppError> {
+    let token = extract_bearer_token(&Request::from_parts(req, Body::default())).ok_or(AppError::AuthRequired)?;
     let claims = jwt.verify(&token).map_err(|_| AppError::TokenInvalid)?;
     Ok(claims.sub)
 }

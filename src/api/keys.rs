@@ -25,8 +25,40 @@ pub fn router(db: DbPool, _config: &AppConfig) -> Router {
     Router::new()
         .route("/api/v1/keys", get(list_keys))
         .route("/api/v1/keys", post(create_key))
-        .route("/api/v1/keys/{id}", delete(delete_key))
+        .route("/api/v1/keys/:id", delete(delete_key))
+        .route("/api/v1/keys/:id", get(get_key_by_id))
         .with_state(state)
+}
+
+async fn get_key_by_id(
+    State(state): State<ApiKeyState>,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+) -> Result<Json<ApiResponse<crate::middleware::auth::ApiKeyInfo>>, AppError> {
+    let conn = state.db.lock().map_err(|_| AppError::InternalError)?;
+    let key = conn.query_row(
+        "SELECT id, key_hash, name, role, active, created_at, expires_at, last_used_at FROM bws_api_keys WHERE id = ?1",
+        params![id],
+        |row| {
+            let created_str: Option<String> = row.get(5)?;
+            let expires_str: Option<String> = row.get(6)?;
+            let last_used_str: Option<String> = row.get(7)?;
+            Ok(crate::middleware::auth::ApiKeyInfo {
+                id: row.get(0)?,
+                name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                role: row.get::<_, Option<String>>(3)?.unwrap_or_else(|| "user".into()),
+                active: row.get::<_, i32>(4)? != 0,
+                created_at: created_str.and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .unwrap_or_else(|| Utc::now()),
+                expires_at: expires_str.and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
+                    .map(|dt| dt.with_timezone(&Utc)),
+                last_used_at: last_used_str.and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
+                    .map(|dt| dt.with_timezone(&Utc)),
+            })
+        },
+    ).map_err(|_| AppError::NotFound)?;
+
+    Ok(Json(ApiResponse::success(key)))
 }
 
 #[derive(serde::Deserialize)]
