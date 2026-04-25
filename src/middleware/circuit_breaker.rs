@@ -97,7 +97,7 @@ impl CircuitBreaker {
             return true;
         }
 
-        let mut state_guard = self.async_state.write().await;
+        let state_guard = self.async_state.write().await;
         match *state_guard {
             CircuitState::Open => {
                 let last_failure = *self.async_last_failure_time.read().await;

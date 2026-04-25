@@ -19,7 +19,7 @@ use crate::error::AppError;
 use crate::middleware::ratelimit::RateLimiters;
 use crate::middleware::circuit_breaker::CircuitBreaker;
 use crate::middleware::retry::RetryClient;
-use crate::security::TokenBlacklist;
+use crate::security::{JwtServiceClone, TokenBlacklist};
 use crate::api::prometheus::{PrometheusMetrics, router as prometheus_router};
 
 #[tokio::main]
@@ -55,14 +55,16 @@ async fn main() -> anyhow::Result<()> {
     let retry_client = Arc::new(RetryClient::new(config.retry.clone()));
     let blacklist = Arc::new(TokenBlacklist::new());
     let metrics = PrometheusMetrics::new();
+    let jwt = JwtServiceClone::new(config.jwt_secret.clone(), config.jwt_expiry_secs);
 
-    let state = Arc::new(AppState {
+    let state = AppState {
         db: db.clone(),
         config: config.clone(),
         rate_limiters,
         circuit_breaker: cb.clone(),
         retry_client,
-    });
+        jwt: jwt.clone(),
+    };
 
     let gateway_state = state.clone();
     let _gw = tokio::spawn(async move {
@@ -90,9 +92,11 @@ fn build_admin_server(
     prometheus_metrics: PrometheusMetrics,
 ) -> axum::Router {
     use axum::routing::get;
+    use tower_http::services::ServeDir;
 
     let auth = api::auth::router(db.clone(), config, blacklist);
     let gateway_api = api::domains::router(db.clone(), config);
+    let keys_api = api::keys::router(db.clone(), config);
     let audit_api = api::audit::router(db.clone());
     let metrics_api = api::metrics::router(db.clone(), cb.clone());
     let prom = prometheus_router(prometheus_metrics);
@@ -100,15 +104,20 @@ fn build_admin_server(
     let k8s_api = api::k8s::router(db.clone(), cb.clone());
     let health = Router::new().route("/health", get(|| async { "ok" }));
 
+    let frontend = ServeDir::new("frontend/dist")
+        .fallback(tower_http::services::ServeFile::new("frontend/dist/index.html"));
+
     axum::Router::new()
         .merge(health)
         .merge(auth)
         .merge(gateway_api)
+        .merge(keys_api)
         .merge(audit_api)
         .merge(metrics_api)
         .merge(prom)
         .merge(traffic_api)
         .merge(k8s_api)
+        .fallback_service(frontend)
         .layer(TraceLayer::new_for_http())
 }
 

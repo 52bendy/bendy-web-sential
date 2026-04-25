@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -8,43 +8,19 @@ import { useAuthStore } from '@/store';
 export default function Login() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { setToken } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ username: '', password: '' });
-  const [searchParams] = useSearchParams();
 
-  // Handle OAuth callback token or SSO token exchange
-  useEffect(() => {
-    const token = searchParams.get('token');
-    if (token) {
-      // Check if it's an SSO token (contains dots) that needs exchange
-      if (token.includes('.') && token.split('.').length === 3) {
-        // It's an SSO token, exchange it for a JWT
-        setLoading(true);
-        api.post('/v1/auth/sso/exchange', { token })
-          .then(({ data }) => {
-            if (data.code === 0 && data.data?.token) {
-              setToken(data.data.token);
-              toast.success(t('auth.login'));
-              navigate('/', { replace: true });
-            } else {
-              toast.error(data.message || t('auth.loginFailed'));
-            }
-          })
-          .catch(() => {
-            toast.error(t('auth.loginFailed'));
-          })
-          .finally(() => {
-            setLoading(false);
-          });
-      } else {
-        // It's already a JWT token from GitHub OAuth
-        setToken(token);
-        toast.success(t('auth.login'));
-        navigate('/', { replace: true });
-      }
-    }
-  }, [searchParams, setToken, navigate, t]);
+  // 处理 GitHub OAuth 错误回调
+  // 注意: token 处理由 App.tsx 的 GitHubTokenHandler 统一负责
+  const error = searchParams.get('error');
+  if (error) {
+    toast.error(searchParams.get('error_description') || t('auth.loginFailed'));
+    // 清除 URL 参数
+    window.history.replaceState({}, '', '/login');
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -13,6 +13,7 @@ import { useAuthStore } from '@/store';
 import api from '@/lib/api';
 import { useEffect, useState } from 'react';
 import '@/i18n';
+import { useAuthHandler } from '@/store';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -31,60 +32,100 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// SSO Token Auto-Login: handles token in URL for any page
-function SsoAutoLogin() {
+function cleanUrl() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete('token');
+  url.searchParams.delete('jti');
+  url.searchParams.delete('error');
+  url.searchParams.delete('error_description');
+  window.history.replaceState({}, '', url.toString());
+}
+
+// GitHub OAuth Token Handler: ONLY component that processes OAuth tokens
+function GitHubTokenHandler() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { setToken, isAuthenticated } = useAuthStore();
+  const [status, setStatus] = useState<'idle' | 'verifying' | 'success' | 'error'>('idle');
   const [processed, setProcessed] = useState(false);
 
   useEffect(() => {
-    // Skip if already authenticated or already processed
-    if (isAuthenticated || processed) return;
-
+    // Only process once per token value
     const token = searchParams.get('token');
-    if (!token) return;
+    const error = searchParams.get('error');
 
-    // Check if it's an SSO token (contains dots) that needs exchange
-    if (token.includes('.') && token.split('.').length === 3) {
-      // It's an SSO token, exchange it for a JWT
-      api.post('/v1/auth/sso/exchange', { token })
-        .then(({ data }) => {
-          if (data.code === 0 && data.data?.token) {
-            setToken(data.data.token);
-          }
-        })
-        .catch(() => {
-          // If exchange fails, try setting as direct JWT (for GitHub OAuth flow)
-          setToken(token);
-        })
-        .finally(() => {
-          setProcessed(true);
-          // Remove token from URL without navigation
-          const url = new URL(window.location.href);
-          url.searchParams.delete('token');
-          url.searchParams.delete('jti');
-          window.history.replaceState({}, '', url.toString());
-        });
-    } else {
-      // Direct JWT token
-      setToken(token);
-      const url = new URL(window.location.href);
-      url.searchParams.delete('token');
-      url.searchParams.delete('jti');
-      window.history.replaceState({}, '', url.toString());
+    // Handle error from OAuth provider
+    if (error) {
+      console.log('[GitHubTokenHandler] OAuth error:', error);
+      // Don't process the error here - Login.tsx handles it
       setProcessed(true);
+      return;
     }
-  }, [searchParams, setToken, isAuthenticated, processed, navigate]);
 
-  return null; // Silent component, doesn't render anything
+    // No token to process
+    if (!token) {
+      setProcessed(true);
+      return;
+    }
+
+    // Already authenticated and this token is already processed
+    if (processed && isAuthenticated) {
+      return;
+    }
+
+    // Skip if we're already processing
+    if (status === 'verifying') {
+      return;
+    }
+
+    // Skip if already processed this token (avoid re-processing)
+    const urlToken = window.location.search.match(/token=([^&]*)/)?.[1];
+    if (processed && urlToken !== token) {
+      setProcessed(false);
+    }
+
+    setStatus('verifying');
+    console.log('[GitHubTokenHandler] Starting token verification for:', token.substring(0, 20) + '...');
+
+    // Verify token with backend - directly validate JWT with /me endpoint
+    api.get('/v1/auth/me', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+      .then(({ data }) => {
+        console.log('[GitHubTokenHandler] Token verified successfully, user:', data.data);
+        // Clean URL first
+        cleanUrl();
+        // Set token after URL is cleaned
+        setToken(token);
+        setStatus('success');
+        // Navigate after a tiny delay to ensure state updates
+        setTimeout(() => {
+          navigate('/', { replace: true });
+        }, 50);
+      })
+      .catch((err) => {
+        console.error('[GitHubTokenHandler] Token verification failed:', err);
+        setStatus('error');
+        // Stay on login page, don't set token
+      });
+  }, [searchParams, setToken, isAuthenticated, navigate, status, processed]);
+
+  return null;
+}
+
+function AuthEventWrapper() {
+  useAuthHandler();
+  return null;
 }
 
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <SsoAutoLogin />
+        <AuthEventWrapper />
+        <GitHubTokenHandler />
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route
