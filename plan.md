@@ -28,9 +28,15 @@
 
 ---
 
-## 📅 Phase 1: 核心基础构建 (v0.2.x) — ✅ 已完成
+## 🚀 项目阶段：Beta (测试阶段)
 
-> **策略：先做有用部分，延后的部分≠不做，只是侧重点不同，记录清晰不遗漏。**
+> **Alpha 阶段已完成，项目现已正式进入 Beta 测试阶段。**
+>
+> 所有计划中的功能模块已实现并通过基础验证，待 Beta 测试通过后将进入 GA (General Availability) 正式发布阶段。
+
+---
+
+## 📅 Phase 1: 核心基础构建 (v0.2.0) — ✅ 已完成
 
 ### ✅ Phase 1 必做（本次迭代范围）
 
@@ -46,7 +52,7 @@
 
 - [x] **1.2.1** 数据库迁移系统
   - [x] 配置 SQLite 连接（数据库路径从 `.env` 读取，业务前缀 `bws_`）
-  - [x] 设计表结构：`bws_domains`（域名）、`bws_routes`（路由规则）、`bws_admin_users`（��理员）、`bws_audit_log`（审计日志表）
+  - [x] 设计表结构：`bws_domains`（域名）、`bws_routes`（路由规则）、`bws_admin_users`（管理员）、`bws_audit_log`（审计日志表）
   - [x] 编写 `migrations/001_init.sql` 迁移文件
   - [x] DB Migration 自动执行脚本（启动时自动执行未执行的迁移）
 
@@ -76,124 +82,88 @@
   - [x] 环境变量说明
   - [x] 目录结构说明
 
-### ⏸ Phase 1 延后项（后续 Phase 按计划做，不遗漏）
-
-#### 延后至 Phase 3（前端的阶段）
-- [ ] 初始化前端项目（Vite + TypeScript + Tailwind CSS + shadcn/ui）
-- [ ] i18next 配置（中/英翻译文件初始化）
-- [ ] 三环境 `.env` 分离（`.env.development` / `.env.staging` / `.env.production`）
-
-#### 延后至 Phase 4（安全加固阶段）
-- [ ] TOTP 生成与验证（totp-rs crate）
-- [ ] TOTP 密钥加密存储（AES 加密，密钥在 .env）
-- [ ] TOTP 密钥加密备份方案（默认关闭）
-- [ ] Token 吊销机制（内存黑名单）
-- [ ] 敏感操作二次验证接口
-- [ ] 所有用户输入校验防 XSS / SQL 注入
-- [ ] 核心安全模块单元测试（覆盖率 ≥80%）
-- [ ] Prometheus 指标导出（`/metrics` 端点）
-- [ ] 流量 / 并发 / 错误率实时统计
-- [ ] 完整审计日志接入业务（表已建好，Phase 1 不接入）
-- [ ] Admin 后台审计日志入口页面
-- [ ] `Dockerfile` 编写
-- [ ] `docker-compose.yml` 编写
-
-#### 延后至 Phase 5（自动化阶段）
-- [ ] 三环境 `.env` 分离
-- [ ] 迭代完成自动化脚本（lint → build → auto-commit → push）
-- [ ] 依赖安全扫描集成（`npm audit` / `cargo audit`）
-- [ ] 高危漏洞禁止发布拦截
-- [ ] 数据库定时备份策略
-- [ ] 备份恢复流程文档化
-- [ ] TOTP 密钥备份恢复流程
-
-#### 延后至 Phase 2（流量控制阶段）
-- [ ] 限流中间件（基于 IP/全局/路径的速率限制）
-- [ ] 熔断中间件
-- [ ] 重试策略
-
 ---
 
 ## 📅 Phase 2: 流量控制模块 (v0.3.0) — ✅ 已完成
 
-- [ ] **2.1 限流中间件 (Rate Limiting)**
-  - [ ] 基于 IP 的速率限制（governor crate）
-  - [ ] 基于全局的速率限制
-  - [ ] 基于路径的速率限制
-  - [ ] 限流触发时返回统一错误码 `2001`
+- [x] **2.1 限流中间件 (Rate Limiting)**
+  - [x] 基于 IP 的速率限制（governor crate）
+  - [x] 基于全局的速率限制
+  - [x] 基于路径的速率限制
+  - [x] 限流触发时返回统一错误码 `2001`
 
-- [ ] **2.2 熔断中间件 (Circuit Breaker)**
-  - [ ] 基于请求成功率的熔断逻辑
-  - [ ] 熔断开启时返回统一错误码 `2002`
+- [x] **2.2 熔断中间件 (Circuit Breaker)**
+  - [x] 基于请求成功率的熔断逻辑
+  - [x] 熔断开启时返回统一错误码 `2002`
 
-- [ ] **2.3 重试策略 (Retries)**
-  - [ ] 配置上游请求失败时的重试频率（指数退避）
+- [x] **2.3 重试策略 (Retries)**
+  - [x] 配置上游请求失败时的重试频率（指数退避）
 
 ---
 
 ## 📅 Phase 3: 管理后台与 UI (v0.4.0) — ✅ 已完成
 
-- [ ] **3.1 前端基础框架搭建**
-  - [ ] Tailwind CSS + shadcn/ui 配置
-  - [ ] 黑白灰三色主题 CSS 变量定义
-  - [ ] 白天 / 夜间模式切换（切换按钮在顶部导航栏右侧）
-  - [ ] i18next 中/英双语切换
-  - [ ] API 请求层统一封装（统一错误处理 + toast 提示）
+- [x] **3.1 前端基础框架搭建**
+  - [x] Tailwind CSS + shadcn/ui 配置
+  - [x] 黑白灰三色主题 CSS 变量定义
+  - [x] 白天 / 夜间模式切换（切换按钮在顶部导航栏右侧）
+  - [x] i18next 中/英双语切换
+  - [x] API 请求层统一封装（统一错误处理 + toast 提示）
 
-- [ ] **3.2 Admin API RESTful 接口**
-  - [ ] 路由 / 域名规则 CRUD 接口
-  - [ ] 指标数据聚合查询接口
-  - [ ] 所有接口要求认证（JWT Bearer Token）
-  - [ ] 统一返回格式 `{code, message, data}`
+- [x] **3.2 Admin API RESTful 接口**
+  - [x] 路由 / 域名规则 CRUD 接口
+  - [x] 指标数据聚合查询接口
+  - [x] 所有接口要求认证（JWT Bearer Token）
+  - [x] 统一返回格式 `{code, message, data}`
 
-- [ ] **3.3 实时监控 WebSocket**
-  - [ ] 关键请求指标实时推送
+- [x] **3.3 实时监控 WebSocket**
+  - [x] 关键请求指标实时推送
 
-- [ ] **3.4 黑白灰风格 UI 实现**
-  - [ ] 管理控制台主界面（Dashboard）
-  - [ ] 路由规则可视化配置界面
-  - [ ] 域名管理界面
-  - [ ] 日志审计界面（**接入 Phase 1 建好的审计日志表**）
+- [x] **3.4 黑白灰风格 UI 实现**
+  - [x] 管理控制台主界面（Dashboard）
+  - [x] 路由规则可视化配置界面
+  - [x] 域名管理界面
+  - [x] 日志审计界面（**接入 Phase 1 建好的审计日志表**）
 
 ---
 
 ## 📅 Phase 4: 安全与生产加固 (v0.5.0) — ✅ 已完成
 
-- [ ] **4.1 安全特性增强**（**接入 Phase 1 延后的安全项**）
-  - [ ] TOTP 生成与验证（totp-rs crate）
-  - [ ] TOTP 密钥加密存储（AES 加密，密钥在 .env）
-  - [ ] TOTP 密钥加密备份方案（默认关���，配置在 .env）
-  - [ ] Token 吊销机制（内存黑名单）
-  - [ ] 敏感操作二次验证接口
-  - [ ] 所有用户输入校验防 XSS / SQL 注入
-  - [ ] 核心安全模块单元测试（覆盖率 ≥80%）
-  - [ ] JWT 认证加固（当前 Phase 1 只做简单认证）
+- [x] **4.1 安全特性增强**（**接入 Phase 1 延后的安全项**）
+  - [x] TOTP 生成与验证（totp-rs crate）
+  - [x] TOTP 密钥加密存储（AES 加密，密钥在 .env）
+  - [x] TOTP 密钥加密备份方案（默认关闭，配置在 .env）
+  - [x] Token 吊销机制（内存黑名单）
+  - [x] 敏感操作二次验证接口
+  - [x] 所有用户输入校验防 XSS / SQL 注入
+  - [x] 核心安全模块单元测试（覆盖率 ≥80%）
+  - [x] JWT 认证加固（当前 Phase 1 只做简单认证）
 
-- [ ] **4.2 监控与告警**
-  - [ ] Prometheus 指标导出（`/metrics` 端点）
-  - [ ] 流量 / 并发 / 错误率实时统计
+- [x] **4.2 监控与告警**
+  - [x] Prometheus 指标导出（`/metrics` 端点）
+  - [x] 流量 / 并发 / 错误率实时统计
 
-- [ ] **4.3 Docker 容器化**
-  - [ ] `Dockerfile` 编写
-  - [ ] `docker-compose.yml` 编写
+- [x] **4.3 Docker 容器化**
+  - [x] `Dockerfile` 编写
+  - [x] `docker-compose.yml` 编写
 
 ---
 
 ## 📅 Phase 5: 自动化与灾备 (v0.6.0) — ✅ 已完成
 
-- [ ] **5.1 三环境管理**（**接入 Phase 1 延后的环境分离**）
-  - [ ] `.env.development` / `.env.staging` / `.env.production` 分离
-  - [ ] 构建命令 `--mode` 参数切换环境
+- [x] **5.1 三环境管理**（**接入 Phase 1 延后的环境分离**）
+  - [x] `.env.development` / `.env.staging` / `.env.production` 分离
+  - [x] 构建命令 `--mode` 参数切换环境
 
-- [ ] **5.2 自动化流程**
-  - [ ] 迭代完成自动化脚本：lint → build → auto-commit → push
-  - [ ] 依赖安全扫描集成（`npm audit` / `cargo audit`）
-  - [ ] 高危漏洞禁止发布拦截
+- [x] **5.2 自动化流程**
+  - [x] 迭代完成自动化脚本：lint → build → auto-commit → push
+  - [x] 依赖安全扫描集成（`npm audit` / `cargo audit`）
+  - [x] 高危漏洞禁止发布拦截
 
-- [ ] **5.3 灾备备份方案**
-  - [ ] 数据库定时备份策略（按配置开启）
-  - [ ] 备份恢复流程文档化（在 README 和 maintain.md 中记录）
-  - [ ] TOTP 密钥备份恢复流程（在 README 和 maintain.md 中记录）
+- [x] **5.3 灾备备份方案**
+  - [x] 数据库定时备份策略（按配置开启）
+  - [x] 备份恢复流程文档化（在 README 和 maintain.md 中记录）
+  - [x] TOTP 密钥备份恢复流程（在 README 和 maintain.md 中记录）
 
 ---
 

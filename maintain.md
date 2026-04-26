@@ -22,6 +22,154 @@
 |---|---|---|---|---|
 | 0.1.0 | 2026-04-23 | 中 | 初始技术方案制定 | ✅ 已完成 |
 | 0.2.0 | 2026-04-23 | 中 | Phase 1 核心基础构建 | ✅ 已完成 |
+| 0.3.0 | 2026-04-24 | 中 | Phase 2 流量控制模块 | ✅ 已完成 |
+| 0.4.0 | 2026-04-24 | 中 | Phase 3 管理后台与 UI | ✅ 已完成 |
+| 0.5.0 | 2026-04-24 | 中 | Phase 4 安全与生产加固 | ✅ 已完成 |
+| 0.6.0 | 2026-04-24 | 中 | Phase 5 自动化与灾备 | ✅ 已完成 |
+| 0.1.3 | 2026-04-25 | 中 | Alpha 收尾 + Beta 启动 | ✅ 已完成 |
+
+---
+
+## v0.1.3 — 2026-04-25
+
+**类型：** 中版本
+
+**触发说明：**
+> Alpha 阶段所有计划功能已完成，项目正式进入 Beta 测试阶段。
+
+**变更内容：**
+- Frontend: 完善路由管理界面（展开行显示认证/限流/健康检查配置）
+- Frontend: 补全 rewrites 翻译键（i18n）
+- Frontend: 新增 Rewrites 改写规则管理页面
+- Backend: 修复 Axum 0.6 路径参数语法（`:id` 而非 `{id}`）
+- Backend: 修复更新路由/域名时未传字段被清空的 BUG（增量更新）
+- Backend: 3000端口集成静态文件服务（前端直接由后端托管）
+- Backend: 新增 Rewrite Rules API 和缓存
+- Backend: 新增 Upstream 负载均衡 CRUD API
+- Backend: 新增健康检查和负载均衡逻辑
+- Database: 新增 rewrite_rules 表
+- Database: 新增性能索引
+
+**如何修改：**
+> 从 `main` 分支拉取 `feat/v0.1.3-enhancements` 开发，完成后合并回 `main`
+
+**完成的 Commits：**
+- `2061d79` feat: v0.1.3 - 完善路由管理界面和修复API BUG
+- `90b719d` chore: bump version to 0.1.3
+
+**遗留问题：**
+- 无
+
+---
+
+## v0.6.0 — 2026-04-24
+
+**类型：** 中版本
+
+**触发说明：**
+> Phase 5 自动化与灾备阶段完成
+
+**变更内容：**
+- 三环境管理（development/staging/production）
+- 数据库定时备份策略（backup.sh）
+- 备份恢复流程文档化
+- TOTP 密钥备份恢复流程
+- 依赖安全扫描集成（cargo audit）
+- 高危漏洞禁止发布拦截
+
+**如何修改：**
+> 从 `dev` 分支拉取功能分支开发，完成后合并回 `dev`
+
+**完成的 Commits：**
+- `bd8993b` feat(automation): phase 5 automation & disaster recovery
+- `575150d` chore(release): v0.6.0 Phase 5 completed
+
+**遗留问题：**
+- 无
+
+---
+
+## v0.5.0 — 2026-04-24
+
+**类型：** 中版本
+
+**触发说明：**
+> Phase 4 安全与生产加固阶段完成
+
+**变更内容：**
+- TOTP 生成与验证（totp-rs crate）
+- TOTP 密钥加密存储（AES 加密）
+- Token 吊销机制（内存黑名单）
+- 敏感操作二次验证接口
+- 用户输入校验防 XSS / SQL 注入
+- Prometheus 指标导出（`/metrics` 端点）
+- 流量/并发/错误率实时统计
+- Dockerfile 编写
+- docker-compose.yml 编写
+
+**如何修改：**
+> 从 `dev` 分支拉取功能分支开发，完成后合并回 `dev`
+
+**完成的 Commits：**
+- `5f1763d` feat(security): phase 4 security & production hardening
+- `1a13952` chore(release): v0.5.0 Phase 4 completed
+
+**遗留问题：**
+- 无
+
+---
+
+## v0.4.0 — 2026-04-24
+
+**类型：** 中版本
+
+**触发说明：**
+> Phase 3 管理后台与 UI 阶段完成
+
+**变更内容：**
+- React 前端项目初始化（Vite + TypeScript + Tailwind）
+- 黑白灰三色主题 + 白天/夜间模式切换
+- i18next 中/英双语国际化
+- 路由规则可视化配置界面
+- 域名管理界面
+- 日志审计界面
+- Admin API RESTful 接口完善
+- 指标数据聚合查询接口
+
+**如何修改：**
+> 从 `dev` 分支拉取功能分支开发，完成后合并回 `dev`
+
+**完成的 Commits：**
+- `cb0c55d` chore(release): v0.4.0 Phase 3 completed
+- `97fe4ad` merge: feat/phase3-admin-ui into dev
+- `ec9e62e` feat(admin-ui): add React frontend with Tailwind and management interfaces
+
+**遗留问题：**
+- 无
+
+---
+
+## v0.3.0 — 2026-04-24
+
+**类型：** 中版本
+
+**触发说明：**
+> Phase 2 流量控制模块完成
+
+**变更内容：**
+- 限流中间件（基于 IP/全局/路径的速率限制）
+- 熔断中间件（基于请求成功率的熔断逻辑）
+- 重试策略（指数退避）
+
+**如何修改：**
+> 从 `dev` 分支拉取功能分支开发，完成后合并回 `dev`
+
+**完成的 Commits：**
+- `c13622f` merge: feat/phase2-traffic-control into dev
+- `5cd0413` feat(traffic-control): add rate limiting, circuit breaker, and retry middleware
+
+**遗留问题：**
+- 无
 
 ---
 
@@ -55,16 +203,6 @@
 - `.env` 配置 + `.env.example`
 - `.gitignore`
 - Git main/dev 分支
-
-**Phase 1 延后至后续 Phase 的内容（不做 ≠ 漏做）：**
-- 前端 UI（Phase 3）
-- i18next 国际化（Phase 3）
-- 三环境 .env 分离（Phase 5）
-- 完整审计日志接入业务（Phase 4）
-- TOTP 二次验证（Phase 4）
-- Prometheus 指标导出（Phase 4）
-- 自动化脚本（Phase 5）
-- 容器化 Dockerfile（Phase 4）
 
 **如何修改：**
 > 从 `dev` 分支拉取 `feat/phase1-core` 开发，完成后合并回 `dev`
